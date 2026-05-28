@@ -1045,7 +1045,7 @@ describe("cli", () => {
     expect(exitCode).toBe(1);
     expect(test.getSpawnCount()).toBe(0);
     expect(test.errors).toContain(
-      `Roughdraft can only open .md files: ${projectDir}`,
+      `Roughdraft can only open files, not directories: ${projectDir}`,
     );
     expect(test.getLastOpenedUrl()).toBeNull();
   });
@@ -1287,7 +1287,7 @@ describe("cli", () => {
 
     expect(exitCode).toBe(0);
     expect(test.logs).toContain(
-      "  roughdraft open <path> [--no-open] [--no-watch] [--print-url] [--port <port>]",
+      "  roughdraft open <path> [--as md|html] [--no-open] [--no-watch] [--print-url] [--port <port>]",
     );
     expect(test.logs).toContain(
       "  --no-watch           Open the file without waiting",
@@ -1303,7 +1303,9 @@ describe("cli", () => {
     const exitCode = await runCli(["doctor", "--help"], test.deps);
 
     expect(exitCode).toBe(0);
-    expect(test.logs).toContain("  roughdraft doctor [path] [--json]");
+    expect(test.logs).toContain(
+      "  roughdraft doctor [path] [--as md|html] [--json]",
+    );
   });
 
   it("rejects unknown command typos with suggestions", async () => {
@@ -1459,8 +1461,8 @@ describe("cli", () => {
     const exitCode = await runCli(["doctor", documentPath], test.deps);
 
     expect(exitCode).toBe(2);
-    expect(test.errors).toContain(
-      `Roughdraft doctor can only validate .md files: ${documentPath}`,
+    expect(test.errors.join("\n")).toContain(
+      `Roughdraft does not recognize the extension of "${documentPath}"`,
     );
   });
 
@@ -1651,7 +1653,7 @@ describe("runCli open in remote mode", () => {
 
     expect(exitCode).toBe(1);
     expect(fetchCalls).toBe(0);
-    expect(errors.join("\n")).toContain("can only open .md files");
+    expect(errors.join("\n")).toContain("does not recognize the extension");
   });
 
   it("registers a session, opens the viewer URL, and writes save events to disk", {

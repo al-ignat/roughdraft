@@ -1,11 +1,20 @@
-export { htmlAdapter } from "./html-adapter";
 export { markdownAdapter } from "./markdown-adapter";
-export type {
-  EditorState,
-  FormatAdapter,
-  ParseOptions,
-  ReplyOptions,
-  ResolveOptions,
-  ReviewIndex,
-  ValidationResult,
-} from "./format-adapter";
+export {
+  adapterFor,
+  adapterForFormat,
+  adapterForOrThrow,
+  FORMAT_IDS,
+  htmlAdapter,
+  isFormatId,
+  SUPPORTED_EXTENSIONS,
+  UnsupportedFormatError,
+  type CriticComment,
+  type EditorState,
+  type FormatAdapter,
+  type FormatId,
+  type ParseOptions,
+  type ReplyOptions,
+  type ResolveOptions,
+  type ReviewIndex,
+  type ValidationResult,
+} from "@roughdraft/formats";

@@ -57,6 +57,9 @@ importers:
       '@joplin/turndown-plugin-gfm':
         specifier: ^1.0.64
         version: 1.0.64
+      '@roughdraft/formats':
+        specifier: workspace:*
+        version: link:../formats
       '@roughdraft/rfm':
         specifier: workspace:*
         version: link:../rfm
@@ -114,9 +117,6 @@ importers:
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
-      linkedom:
-        specifier: ^0.18.12
-        version: 0.18.12
       lucide-react:
         specifier: ^1.8.0
         version: 1.8.0(react@19.2.5)
@@ -173,6 +173,34 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@22.19.17)(@vitest/coverage-v8@4.1.5)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.4(@types/node@22.19.17)(typescript@5.9.3))(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
 
+  packages/formats:
+    dependencies:
+      '@roughdraft/rfm':
+        specifier: workspace:*
+        version: link:../rfm
+      '@tiptap/core':
+        specifier: ^3.22.4
+        version: 3.22.4(@tiptap/pm@3.22.4)
+      '@tiptap/starter-kit':
+        specifier: ^3.0.0
+        version: 3.22.4
+      linkedom:
+        specifier: ^0.18.12
+        version: 0.18.12
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.19.17
+      jsdom:
+        specifier: ^29.0.2
+        version: 29.0.2(@noble/hashes@1.8.0)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(@vitest/coverage-v8@4.1.5)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.4(@types/node@22.19.17)(typescript@5.9.3))(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+
   packages/rfm:
     devDependencies:
       typescript:
@@ -184,6 +212,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@roughdraft/formats':
+        specifier: workspace:*
+        version: link:../formats
       '@roughdraft/rfm':
         specifier: workspace:*
         version: link:../rfm

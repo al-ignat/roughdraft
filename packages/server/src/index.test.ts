@@ -181,7 +181,7 @@ describe("createApp", () => {
 
     expect(staleWriteResponse.status).toBe(409);
     expect(staleWriteResponse.body).toMatchObject({
-      error: "Markdown file changed on disk",
+      error: "Document changed on disk",
       current: {
         id: "notes/draft",
         title: "External change",
@@ -226,7 +226,7 @@ describe("createApp", () => {
 
     expect(staleWriteResponse.status).toBe(409);
     expect(staleWriteResponse.body).toMatchObject({
-      error: "Markdown file changed on disk",
+      error: "Document changed on disk",
       current: {
         id: "draft",
         title: "External",
@@ -248,7 +248,7 @@ describe("createApp", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: "Markdown file not found" });
+    expect(response.body).toEqual({ error: "Document not found" });
   });
 
   it("accepts review completed events for a markdown file inside the project", async () => {
@@ -317,7 +317,7 @@ describe("createApp", () => {
       .send({ projectPath: projectDir, path: "../outside.md" });
 
     expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: "Markdown file not found" });
+    expect(response.body).toEqual({ error: "Document not found" });
   });
 
   it("returns retained review events to watchers", async () => {
@@ -962,5 +962,106 @@ describe("createApp", () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("serves an .html document via the document routes", async () => {
+    const htmlBody = [
+      "<!doctype html>",
+      '<html lang="en"><head><meta charset="utf-8"><title>Hello HTML</title></head>',
+      "<body><h1>Hello HTML</h1><p>Body text.</p></body></html>",
+      "",
+    ].join("\n");
+    fs.writeFileSync(path.join(projectDir, "page.html"), htmlBody);
+
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const fileResponse = await request(app)
+      .get("/api/markdown-file")
+      .query({ projectPath: projectDir, path: "page.html" });
+
+    expect(fileResponse.status).toBe(200);
+    expect(fileResponse.body.title).toBe("Hello HTML");
+    expect(fileResponse.body.content).toBe(htmlBody);
+
+    const indexResponse = await request(app)
+      .get("/api/review-index")
+      .query({ projectPath: projectDir, path: "page.html" });
+
+    expect(indexResponse.status).toBe(200);
+    expect(indexResponse.body.format).toBe("roughdraft-flavored-markdown");
+    expect(Array.isArray(indexResponse.body.items)).toBe(true);
+  });
+
+  it("rejects an unrecognized extension with the supported list", async () => {
+    fs.writeFileSync(path.join(projectDir, "note.txt"), "hello");
+
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app)
+      .get("/api/markdown-file")
+      .query({ projectPath: projectDir, path: "note.txt" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("note.txt");
+    expect(response.body.error).toContain("--as md or --as html");
+    expect(response.body.supported).toEqual([
+      ".md",
+      ".markdown",
+      ".html",
+      ".htm",
+    ]);
+  });
+
+  it("warns and dedupes when foo.md and foo.html collide in /api/pages", async () => {
+    fs.writeFileSync(path.join(projectDir, "shared.md"), "# Shared MD\n");
+    fs.writeFileSync(
+      path.join(projectDir, "shared.html"),
+      "<!doctype html><html><head><title>Shared HTML</title></head><body></body></html>",
+    );
+
+    const warnings: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      warnings.push(
+        typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"),
+      );
+      return true;
+    }) as typeof process.stderr.write;
+
+    try {
+      const { app } = createApp({ homeDir, staticDirPath: projectDir });
+      const response = await request(app)
+        .get("/api/pages")
+        .query({ projectPath: projectDir });
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((page: { id: string }) => page.id);
+      expect(ids.filter((id: string) => id === "shared")).toHaveLength(1);
+      const sharedPage = response.body.find(
+        (page: { id: string }) => page.id === "shared",
+      );
+      expect(sharedPage.title).toBe("Shared MD");
+
+      expect(warnings.join("")).toContain('Multiple files share id "shared"');
+      expect(warnings.join("")).toContain("shared.html");
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  });
+
+  it("honors the as=html override on an arbitrary extension", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "note.txt"),
+      "<!doctype html><html><head><title>Forced HTML</title></head><body><p>x</p></body></html>",
+    );
+
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app)
+      .get("/api/markdown-file")
+      .query({ projectPath: projectDir, path: "note.txt", as: "html" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.title).toBe("Forced HTML");
   });
 });

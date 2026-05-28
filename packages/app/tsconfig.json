@@ -6,7 +6,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@roughdraft/rfm": ["../rfm/src/index.ts"]
+      "@roughdraft/rfm": ["../rfm/src/index.ts"],
+      "@roughdraft/formats": ["../formats/src/index.ts"]
     },
     "jsx": "react-jsx",
     "strict": true,

@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@roughdraft/formats": "workspace:*",
     "@roughdraft/rfm": "workspace:*",
     "express": "^5.1.0"
   },

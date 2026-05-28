@@ -5,7 +5,15 @@ import { createServer as createHttpServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
-import { extractRoughdraftReviewIndex } from "@roughdraft/rfm";
+import {
+  adapterFor,
+  adapterForOrThrow,
+  isFormatId,
+  SUPPORTED_EXTENSIONS,
+  UnsupportedFormatError,
+  type FormatAdapter,
+  type FormatId,
+} from "@roughdraft/formats";
 import {
   ROUGHDRAFT_DEFAULT_PORT,
   ROUGHDRAFT_PUBLIC_HOST,
@@ -136,20 +144,74 @@ function writeRemoteSessionEvent(
   response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-function listMdFiles(projectDir: string): string[] {
+interface SupportedFile {
+  id: string;
+  relativePath: string;
+  extension: string;
+}
+
+function stripSupportedExtension(filename: string): string {
+  for (const ext of SUPPORTED_EXTENSIONS) {
+    if (filename.toLowerCase().endsWith(ext)) {
+      return filename.slice(0, filename.length - ext.length);
+    }
+  }
+  return filename;
+}
+
+const collisionWarningsLogged = new Set<string>();
+
+function listSupportedFiles(projectDir: string): SupportedFile[] {
+  let entries: string[];
   try {
-    return fs
-      .readdirSync(projectDir)
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => f.replace(/\.md$/, ""));
+    entries = fs.readdirSync(projectDir);
   } catch {
     return [];
   }
-}
 
-function titleFromContent(content: string, fallback: string): string {
-  const firstLine = content.split("\n")[0] || "";
-  return firstLine.replace(/^#*\s*/, "").trim() || fallback;
+  const byId = new Map<string, SupportedFile>();
+  const losersById = new Map<string, string[]>();
+
+  // Sort by SUPPORTED_EXTENSIONS order so the canonical adapter wins.
+  const sorted = entries
+    .filter((f) => adapterFor(f) !== null)
+    .sort((a, b) => {
+      const aPriority = SUPPORTED_EXTENSIONS.indexOf(
+        path.extname(a).toLowerCase(),
+      );
+      const bPriority = SUPPORTED_EXTENSIONS.indexOf(
+        path.extname(b).toLowerCase(),
+      );
+      return aPriority - bPriority;
+    });
+
+  for (const filename of sorted) {
+    const id = stripSupportedExtension(filename);
+    const extension = path.extname(filename).toLowerCase();
+    if (byId.has(id)) {
+      const losers = losersById.get(id) ?? [];
+      losers.push(filename);
+      losersById.set(id, losers);
+      continue;
+    }
+    byId.set(id, { id, relativePath: filename, extension });
+  }
+
+  for (const [id, losers] of losersById) {
+    const winner = byId.get(id);
+    if (!winner) continue;
+    const cacheKey = `${projectDir}::${id}`;
+    if (!collisionWarningsLogged.has(cacheKey)) {
+      collisionWarningsLogged.add(cacheKey);
+      process.stderr.write(
+        `[roughdraft] Multiple files share id "${id}" in ${projectDir}: ` +
+          `using "${winner.relativePath}", ignoring ${losers.map((f) => `"${f}"`).join(", ")}. ` +
+          `Rename or delete one to silence this warning.\n`,
+      );
+    }
+  }
+
+  return Array.from(byId.values());
 }
 
 function fileVersionFromContent(
@@ -166,9 +228,10 @@ function fileVersionFromFile(filePath: string): string {
   return fileVersionFromContent(stats, content);
 }
 
-function markdownPageFromFile(
+function pageFromFile(
   relativePath: string,
   absolutePath: string,
+  adapter: FormatAdapter,
 ): {
   id: string;
   title: string;
@@ -177,24 +240,27 @@ function markdownPageFromFile(
 } {
   const content = fs.readFileSync(absolutePath, "utf-8");
   const stats = fs.statSync(absolutePath);
-  const fallbackTitle = path.basename(relativePath, ".md");
+  const fallbackTitle = stripSupportedExtension(path.basename(relativePath));
+  const extractedTitle = adapter.extractTitle(content);
 
   return {
     id: pageIdFromRelativePath(relativePath),
-    title: titleFromContent(content, fallbackTitle),
+    title: extractedTitle || fallbackTitle,
     content,
     version: fileVersionFromContent(stats, content),
   };
 }
 
 function pageIdFromRelativePath(relativePath: string): string {
-  return relativePath.replace(/\.md$/i, "").split(path.sep).join("/");
+  return stripSupportedExtension(relativePath).split(path.sep).join("/");
 }
 
 function nextUntitledId(projectDir: string): string {
-  const existing = listMdFiles(projectDir);
+  const existingIds = new Set(
+    listSupportedFiles(projectDir).map((file) => file.id),
+  );
   let i = 1;
-  while (existing.includes(`untitled-${i}`)) i++;
+  while (existingIds.has(`untitled-${i}`)) i++;
   return `untitled-${i}`;
 }
 
@@ -219,6 +285,12 @@ function ensureProjectPath(
 }
 
 function pageFilePathFromId(projectDir: string, id: string): string | null {
+  for (const ext of SUPPORTED_EXTENSIONS) {
+    const candidate = ensureProjectPath(projectDir, `${id}${ext}`);
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
   return ensureProjectPath(projectDir, `${id}.md`);
 }
 
@@ -316,9 +388,7 @@ function listFileSystem(dir: string, homeDir: string): FileSystemListing {
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
   const files = rawEntries
-    .filter(
-      (entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"),
-    )
+    .filter((entry) => entry.isFile() && adapterFor(entry.name) !== null)
     .map<FileSystemEntry>((entry) => ({
       name: entry.name,
       path: path.join(normalizedDir, entry.name),
@@ -478,12 +548,38 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
     return resolvedProjectDir;
   }
 
-  function markdownPathFromRequest(
+  function formatOverrideFromRequest(
     req: Request,
     res: Response,
-  ): { relativePath: string; absolutePath: string; projectDir: string } | null {
+  ): FormatId | null | undefined {
+    const raw =
+      typeof req.query.as === "string"
+        ? req.query.as
+        : typeof req.body?.as === "string"
+          ? req.body.as
+          : undefined;
+    if (raw === undefined) return undefined;
+    if (isFormatId(raw)) return raw;
+    res.status(400).json({
+      error: `Invalid format override "${raw}". Expected one of: md, html.`,
+    });
+    return null;
+  }
+
+  function documentPathFromRequest(
+    req: Request,
+    res: Response,
+  ): {
+    relativePath: string;
+    absolutePath: string;
+    projectDir: string;
+    adapter: FormatAdapter;
+  } | null {
     const projectDir = projectDirFromRequest(req, res);
     if (!projectDir) return null;
+
+    const override = formatOverrideFromRequest(req, res);
+    if (override === null) return null;
 
     const relativePath =
       typeof req.query.path === "string"
@@ -493,17 +589,31 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
           : "";
     const absolutePath = ensureProjectPath(projectDir, relativePath);
 
-    if (!absolutePath?.toLowerCase().endsWith(".md")) {
-      res.status(404).json({ error: "Markdown file not found" });
+    if (!absolutePath) {
+      res.status(404).json({ error: "Document not found" });
       return null;
+    }
+
+    let adapter: FormatAdapter;
+    try {
+      adapter = adapterForOrThrow(absolutePath, override);
+    } catch (error) {
+      if (error instanceof UnsupportedFormatError) {
+        res.status(400).json({
+          error: error.message,
+          supported: error.supported,
+        });
+        return null;
+      }
+      throw error;
     }
 
     if (!fs.existsSync(absolutePath)) {
-      res.status(404).json({ error: "Markdown file not found" });
+      res.status(404).json({ error: "Document not found" });
       return null;
     }
 
-    return { relativePath, absolutePath, projectDir };
+    return { relativePath, absolutePath, projectDir, adapter };
   }
 
   // --- API routes ---
@@ -512,13 +622,13 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
     const projectDir = projectDirFromRequest(req, res);
     if (!projectDir) return;
 
-    const ids = listMdFiles(projectDir);
-    const pages = ids.map((id) => {
-      const content = fs.readFileSync(
-        path.join(projectDir, `${id}.md`),
-        "utf-8",
-      );
-      return { id, title: titleFromContent(content, id), content };
+    const files = listSupportedFiles(projectDir);
+    const pages = files.map(({ id, relativePath }) => {
+      const absolute = path.join(projectDir, relativePath);
+      const adapter = adapterFor(absolute);
+      const content = fs.readFileSync(absolute, "utf-8");
+      const extracted = adapter?.extractTitle(content);
+      return { id, title: extracted || id, content };
     });
     res.json(pages);
   });
@@ -533,48 +643,26 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
       res.status(404).json({ error: "Page not found" });
       return;
     }
+    const adapter = adapterFor(filePath);
     const content = fs.readFileSync(filePath, "utf-8");
-    res.json({ id, title: titleFromContent(content, id), content });
+    const extracted = adapter?.extractTitle(content);
+    res.json({ id, title: extracted || id, content });
   });
 
   app.get("/api/markdown-file", (req, res) => {
-    const projectDir = projectDirFromRequest(req, res);
-    if (!projectDir) return;
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
 
-    const relativePath =
-      typeof req.query.path === "string" ? req.query.path : "";
-    const absolutePath = ensureProjectPath(projectDir, relativePath);
-
-    if (!absolutePath?.toLowerCase().endsWith(".md")) {
-      res.status(404).json({ error: "Markdown file not found" });
-      return;
-    }
-
-    if (!fs.existsSync(absolutePath)) {
-      res.status(404).json({ error: "Markdown file not found" });
-      return;
-    }
-
-    res.json(markdownPageFromFile(relativePath, absolutePath));
+    res.json(
+      pageFromFile(target.relativePath, target.absolutePath, target.adapter),
+    );
   });
 
   app.get("/api/markdown-file/events", (req, res) => {
-    const projectDir = projectDirFromRequest(req, res);
-    if (!projectDir) return;
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
 
-    const relativePath =
-      typeof req.query.path === "string" ? req.query.path : "";
-    const absolutePath = ensureProjectPath(projectDir, relativePath);
-
-    if (!absolutePath?.toLowerCase().endsWith(".md")) {
-      res.status(404).json({ error: "Markdown file not found" });
-      return;
-    }
-
-    if (!fs.existsSync(absolutePath)) {
-      res.status(404).json({ error: "Markdown file not found" });
-      return;
-    }
+    const { relativePath, absolutePath } = target;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -613,25 +701,25 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
   });
 
   app.get("/api/review-index", (req, res) => {
-    const target = markdownPathFromRequest(req, res);
+    const target = documentPathFromRequest(req, res);
     if (!target) return;
 
-    const markdown = fs.readFileSync(target.absolutePath, "utf-8");
+    const content = fs.readFileSync(target.absolutePath, "utf-8");
     res.json({
       documentPath: target.absolutePath,
       projectPath: target.projectDir,
       relativePath: target.relativePath,
       fileVersion: fileVersionFromFile(target.absolutePath),
-      ...extractRoughdraftReviewIndex(markdown),
+      ...target.adapter.extractReviewIndex(content),
     });
   });
 
   app.post("/api/review-events", (req, res) => {
-    const target = markdownPathFromRequest(req, res);
+    const target = documentPathFromRequest(req, res);
     if (!target) return;
 
-    const markdown = fs.readFileSync(target.absolutePath, "utf-8");
-    const index = extractRoughdraftReviewIndex(markdown);
+    const content = fs.readFileSync(target.absolutePath, "utf-8");
+    const index = target.adapter.extractReviewIndex(content);
     const result = reviewEvents.emit({
       documentPath: target.absolutePath,
       projectPath: target.projectDir,
@@ -644,7 +732,7 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
   });
 
   app.post("/api/review-events/watch", async (req, res) => {
-    const target = markdownPathFromRequest(req, res);
+    const target = documentPathFromRequest(req, res);
     if (!target) return;
 
     const fromNow = req.body?.fromNow !== false;
@@ -671,7 +759,7 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
   });
 
   app.get("/api/review-events/status", (req, res) => {
-    const target = markdownPathFromRequest(req, res);
+    const target = documentPathFromRequest(req, res);
     if (!target) return;
 
     const watcherCount = reviewEvents.waiterCountForDocument(
@@ -696,45 +784,39 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
       res.status(404).json({ error: "Page not found" });
       return;
     }
+    const adapter = adapterFor(filePath);
     const { content } = req.body as { content: string };
     fs.writeFileSync(filePath, content);
-    res.json({ id, title: titleFromContent(content, id), content });
+    const extracted = adapter?.extractTitle(content);
+    res.json({ id, title: extracted || id, content });
   });
 
   app.put("/api/markdown-file", (req, res) => {
-    const projectDir = projectDirFromRequest(req, res);
-    if (!projectDir) return;
-
-    const relativePath =
-      typeof req.query.path === "string" ? req.query.path : "";
-    const absolutePath = ensureProjectPath(projectDir, relativePath);
-
-    if (!absolutePath?.toLowerCase().endsWith(".md")) {
-      res.status(404).json({ error: "Markdown file not found" });
-      return;
-    }
-
-    if (!fs.existsSync(absolutePath)) {
-      res.status(404).json({ error: "Markdown file not found" });
-      return;
-    }
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
 
     const { content, expectedVersion } = req.body as {
       content: string;
       expectedVersion?: string;
     };
-    const currentVersion = fileVersionFromFile(absolutePath);
+    const currentVersion = fileVersionFromFile(target.absolutePath);
 
     if (expectedVersion && expectedVersion !== currentVersion) {
       res.status(409).json({
-        error: "Markdown file changed on disk",
-        current: markdownPageFromFile(relativePath, absolutePath),
+        error: "Document changed on disk",
+        current: pageFromFile(
+          target.relativePath,
+          target.absolutePath,
+          target.adapter,
+        ),
       });
       return;
     }
 
-    fs.writeFileSync(absolutePath, content);
-    res.json(markdownPageFromFile(relativePath, absolutePath));
+    fs.writeFileSync(target.absolutePath, content);
+    res.json(
+      pageFromFile(target.relativePath, target.absolutePath, target.adapter),
+    );
   });
 
   app.post("/api/pages", (req, res) => {
@@ -747,10 +829,12 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
     };
     const id = nextUntitledId(projectDir);
     const content = bodyContent || `# ${title || "Untitled"}\n`;
-    const filePath = path.join(projectDir, `${id}.md`);
+    const relativePath = `${id}.md`;
+    const filePath = path.join(projectDir, relativePath);
     fs.writeFileSync(filePath, content);
 
-    res.status(201).json(markdownPageFromFile(`${id}.md`, filePath));
+    const adapter = adapterForOrThrow(filePath);
+    res.status(201).json(pageFromFile(relativePath, filePath, adapter));
   });
 
   app.delete("/api/pages/:id", (req, res) => {
