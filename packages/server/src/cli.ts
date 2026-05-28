@@ -7,8 +7,16 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   type RfmDiagnostic,
-  validateRoughdraftMarkdown,
 } from "@roughdraft/rfm";
+import {
+  adapterFor,
+  adapterForOrThrow,
+  isFormatId,
+  SUPPORTED_EXTENSIONS,
+  UnsupportedFormatError,
+  type FormatAdapter,
+  type FormatId,
+} from "@roughdraft/formats";
 import {
   ROUGHDRAFT_BIND_HOST,
   ROUGHDRAFT_DEFAULT_PORT,
@@ -142,6 +150,7 @@ interface ParsedCli {
 
 interface ParsedCommandOptions {
   all: boolean;
+  as?: FormatId;
   batchWindowSeconds: number;
   help: boolean;
   json: boolean;
@@ -263,6 +272,7 @@ function parseCommandOptions(
   args: string[],
   options: {
     allowAll?: boolean;
+    allowAs?: boolean;
     allowOpen?: boolean;
     allowPort?: boolean;
     allowWatch?: boolean;
@@ -381,6 +391,29 @@ function parseCommandOptions(
     if (arg.startsWith("--port=")) {
       if (!options.allowPort) throw new Error(`Unknown flag: --port`);
       parsed.port = arg.slice("--port=".length);
+      continue;
+    }
+
+    if (arg === "--as") {
+      if (!options.allowAs) throw new Error(`Unknown flag: ${arg}`);
+      const next = takeFlagValue(args, index, arg);
+      if (!isFormatId(next.value)) {
+        throw new Error(
+          `--as expects "md" or "html", got "${next.value}".`,
+        );
+      }
+      parsed.as = next.value;
+      index = next.nextIndex;
+      continue;
+    }
+
+    if (arg.startsWith("--as=")) {
+      if (!options.allowAs) throw new Error(`Unknown flag: --as`);
+      const value = arg.slice("--as=".length);
+      if (!isFormatId(value)) {
+        throw new Error(`--as expects "md" or "html", got "${value}".`);
+      }
+      parsed.as = value;
       continue;
     }
 
@@ -561,7 +594,7 @@ function isKnownCommand(value: string): value is KnownCommand {
 
 function isPathLikeInput(value: string): boolean {
   return (
-    value.toLowerCase().endsWith(".md") ||
+    adapterFor(value) !== null ||
     value.startsWith(".") ||
     value.startsWith("/") ||
     value.startsWith("~") ||
@@ -785,9 +818,10 @@ function printHelp(log: (message: string) => void) {
   log("");
   log("Examples:");
   log("  roughdraft open ./draft.md");
+  log("  roughdraft open ./page.html");
   log("  roughdraft open ./draft.md --print-url");
+  log("  roughdraft open ./scratch.txt --as md");
   log("  roughdraft open ./draft.md --json");
-  log("  roughdraft open ./draft.md --no-watch");
   log("  roughdraft watch ./draft.md --json");
   log("  roughdraft status --json");
   log("");
@@ -802,11 +836,11 @@ function printCommandHelp(
   if (command === "open") {
     log("Usage:");
     log(
-      "  roughdraft open <path> [--no-open] [--no-watch] [--print-url] [--port <port>]",
+      "  roughdraft open <path> [--as md|html] [--no-open] [--no-watch] [--print-url] [--port <port>]",
     );
     log("");
     log(
-      "Opens one Markdown file and waits for Done Reviewing. Starts Roughdraft if needed.",
+      "Opens one document (Markdown or HTML) and waits for Done Reviewing. Starts Roughdraft if needed.",
     );
     log("");
     log("Flags:");
@@ -817,6 +851,7 @@ function printCommandHelp(
       "  --print-url          Print only the document URL and do not open it",
     );
     log("  --no-watch           Open the file without waiting");
+    log("  --as md|html         Force the format adapter (overrides extension)");
     log("  --timeout <seconds>  Maximum watch time; omitted means no timeout");
     log("  --replay             Allow watch to return retained older events");
     log("  --json               Print machine-readable output");
@@ -923,14 +958,15 @@ function printCommandHelp(
 
   if (command === "doctor") {
     log("Usage:");
-    log("  roughdraft doctor [path] [--json]");
+    log("  roughdraft doctor [path] [--as md|html] [--json]");
     log("");
     log(
-      "Diagnoses local Roughdraft setup and server state, or validates one Markdown file.",
+      "Diagnoses local Roughdraft setup and server state, or validates one document (Markdown or HTML).",
     );
     log("");
     log("Flags:");
     log("  --json               Print machine-readable output");
+    log("  --as md|html         Force the format adapter (overrides extension)");
     log("  --state-file <path>  Server state file");
     log("  --state-dir <dir>    Directory containing server.json");
     return;
@@ -1048,11 +1084,18 @@ function buildLoopbackUrl(host: string, port: number, pathname = "/"): URL {
   return new URL(`http://${baseHost}:${port}${pathname}`);
 }
 
-function buildTargetUrl(baseUrl: string, openPath: string): string {
+function buildTargetUrl(
+  baseUrl: string,
+  openPath: string,
+  formatOverride?: FormatId,
+): string {
   const url = new URL(baseUrl);
 
   url.pathname = "/";
   url.searchParams.set("path", openPath);
+  if (formatOverride) {
+    url.searchParams.set("as", formatOverride);
+  }
   return url.toString();
 }
 
@@ -1334,19 +1377,29 @@ async function sendOpenRequestToExistingWindow(
   }
 }
 
-function resolveTargetPath(inputPath: string): ResolvedTargetPath {
+function resolveTargetPath(
+  inputPath: string,
+  formatOverride?: FormatId,
+): ResolvedTargetPath {
   const resolvedPath = path.resolve(inputPath);
-  const looksLikeMarkdownFile = resolvedPath.toLowerCase().endsWith(".md");
+  const supportedListing = `Supported: ${SUPPORTED_EXTENSIONS.join(", ")}.`;
+  const overrideHint = formatOverride
+    ? ""
+    : " Use --as md or --as html to override.";
 
   try {
     const stat = fs.statSync(resolvedPath);
     if (stat.isDirectory()) {
-      throw new Error(`Roughdraft can only open .md files: ${resolvedPath}`);
+      throw new Error(
+        `Roughdraft can only open files, not directories: ${resolvedPath}`,
+      );
     }
 
     if (stat.isFile()) {
-      if (!looksLikeMarkdownFile) {
-        throw new Error(`Roughdraft can only open .md files: ${resolvedPath}`);
+      if (!formatOverride && adapterFor(resolvedPath) === null) {
+        throw new Error(
+          `Roughdraft does not recognize the extension of "${resolvedPath}". ${supportedListing}${overrideHint}`,
+        );
       }
 
       return {
@@ -1357,7 +1410,8 @@ function resolveTargetPath(inputPath: string): ResolvedTargetPath {
   } catch (error) {
     if (
       error instanceof Error &&
-      error.message.startsWith("Roughdraft can only open")
+      (error.message.startsWith("Roughdraft can only open") ||
+        error.message.startsWith("Roughdraft does not recognize"))
     ) {
       throw error;
     }
@@ -1938,14 +1992,22 @@ async function runMarkdownDoctor(
   deps: CliDependencies,
   targetPath: string,
   json: boolean,
+  formatOverride?: FormatId,
 ): Promise<number> {
-  if (!isMarkdownPath(targetPath)) {
-    deps.error(`Roughdraft doctor can only validate .md files: ${targetPath}`);
+  const absolutePath = path.resolve(deps.cwd, targetPath);
+  let adapter: FormatAdapter;
+  try {
+    adapter = adapterForOrThrow(absolutePath, formatOverride);
+  } catch (error) {
+    deps.error(
+      error instanceof UnsupportedFormatError
+        ? error.message
+        : `Could not resolve format for ${absolutePath}.`,
+    );
     return USAGE_ERROR;
   }
 
-  const absolutePath = path.resolve(deps.cwd, targetPath);
-  let markdown: string;
+  let content: string;
 
   try {
     const stat = fs.statSync(absolutePath);
@@ -1953,7 +2015,7 @@ async function runMarkdownDoctor(
       deps.error(`Path is not a file: ${absolutePath}`);
       return USAGE_ERROR;
     }
-    markdown = fs.readFileSync(absolutePath, "utf8");
+    content = fs.readFileSync(absolutePath, "utf8");
   } catch (error) {
     const code =
       error instanceof Error && "code" in error
@@ -1967,9 +2029,9 @@ async function runMarkdownDoctor(
     return USAGE_ERROR;
   }
 
-  const validation = validateRoughdraftMarkdown(markdown);
+  const validation = adapter.validateReview(content);
   const payload = {
-    kind: "markdown" as const,
+    kind: adapter.extension === ".md" ? "markdown" as const : "html" as const,
     path: absolutePath,
     format: validation.format,
     version: validation.version,
@@ -2080,11 +2142,6 @@ async function runWatch(
   deps.log(`Review completed for ${target.openPath}.`);
   deps.log(`Received ${(payload.events ?? []).length} event(s).`);
   return 0;
-}
-
-function isMarkdownPath(targetPath: string): boolean {
-  const extension = path.extname(targetPath).toLowerCase();
-  return extension === ".md";
 }
 
 function relativeDisplayPath(cwd: string, absolutePath: string): string {
@@ -2543,7 +2600,7 @@ export async function runCli(
     if (command === "doctor") {
       let options: ParsedCommandOptions;
       try {
-        options = parseCommandOptions(rest, {});
+        options = parseCommandOptions(rest, { allowAs: true });
       } catch (error) {
         deps.error(error instanceof Error ? error.message : "Invalid usage.");
         return USAGE_ERROR;
@@ -2562,7 +2619,12 @@ export async function runCli(
       deps = applyCliEnvOverrides(deps, options);
       const json = parsed.global.json || options.json;
       if (options.positionals.length === 1) {
-        return runMarkdownDoctor(deps, options.positionals[0] ?? "", json);
+        return runMarkdownDoctor(
+          deps,
+          options.positionals[0] ?? "",
+          json,
+          options.as,
+        );
       }
 
       shouldPrintUpdateNotice = !json;
@@ -2573,6 +2635,7 @@ export async function runCli(
       let options: ParsedCommandOptions;
       try {
         options = parseCommandOptions(rest, {
+          allowAs: true,
           allowOpen: true,
           allowPort: true,
           allowWatch: true,
@@ -2612,7 +2675,7 @@ export async function runCli(
       const json = parsed.global.json || options.json;
       let resolvedTarget: ResolvedTargetPath;
       try {
-        resolvedTarget = resolveTargetPath(target);
+        resolvedTarget = resolveTargetPath(target, options.as);
       } catch (error) {
         deps.error(error instanceof Error ? error.message : "Invalid path.");
         return 1;
@@ -2645,7 +2708,7 @@ export async function runCli(
         baseUrl = buildPublicBaseUrl(result.server.port);
       }
 
-      const targetUrl = buildTargetUrl(baseUrl, openPath);
+      const targetUrl = buildTargetUrl(baseUrl, openPath, options.as);
       let openMode: OpenMode = "disabled";
       if (!options.noOpen && deps.env.ROUGHDRAFT_NO_OPEN !== "1") {
         openMode = (await sendOpenRequestToExistingWindow(
