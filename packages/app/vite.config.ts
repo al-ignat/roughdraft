@@ -14,6 +14,9 @@ export default defineConfig(() => {
         "@roughdraft/rfm": fileURLToPath(
           new URL("../rfm/src/index.ts", import.meta.url),
         ),
+        "@roughdraft/formats": fileURLToPath(
+          new URL("../formats/src/index.ts", import.meta.url),
+        ),
       },
     },
     build: {

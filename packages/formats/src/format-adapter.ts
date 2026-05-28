@@ -5,7 +5,15 @@ import type {
   RfmReviewIndex,
   RfmValidationResult,
 } from "@roughdraft/rfm";
-import type { CriticComment } from "../critic-markup";
+
+export interface CriticComment {
+  id: string;
+  content: string;
+  createdAt: string;
+  authorType?: "user" | "ai";
+  authorId?: string | null;
+  parentCommentId?: string | null;
+}
 
 export interface EditorState {
   doc: JSONContent;

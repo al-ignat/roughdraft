@@ -1,7 +1,7 @@
 import { generateJSON, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { parseHTML } from "linkedom";
-import type { CriticComment } from "../critic-markup";
+import type { CriticComment } from "./format-adapter";
 import {
   appendHtmlReply,
   extractHtmlReviewIndex,

@@ -1,0 +1,63 @@
+import path from "node:path";
+import type { FormatAdapter } from "./format-adapter";
+import { htmlAdapter } from "./html-adapter";
+import { markdownAdapter } from "./markdown-adapter";
+
+export type FormatId = "md" | "html";
+
+const REGISTRY: Record<string, FormatAdapter> = {
+  ".md": markdownAdapter,
+  ".markdown": markdownAdapter,
+  ".html": htmlAdapter,
+  ".htm": htmlAdapter,
+};
+
+const FORMAT_TO_EXTENSION: Record<FormatId, string> = {
+  md: ".md",
+  html: ".html",
+};
+
+export const SUPPORTED_EXTENSIONS = Object.keys(REGISTRY);
+
+export const FORMAT_IDS: ReadonlyArray<FormatId> = ["md", "html"];
+
+export function adapterFor(filePath: string): FormatAdapter | null {
+  const ext = path.extname(filePath).toLowerCase();
+  return REGISTRY[ext] ?? null;
+}
+
+export function adapterForFormat(format: FormatId): FormatAdapter {
+  return REGISTRY[FORMAT_TO_EXTENSION[format]];
+}
+
+export function isFormatId(value: unknown): value is FormatId {
+  return value === "md" || value === "html";
+}
+
+export function adapterForOrThrow(
+  filePath: string,
+  format?: FormatId,
+): FormatAdapter {
+  if (format) {
+    return adapterForFormat(format);
+  }
+  const adapter = adapterFor(filePath);
+  if (!adapter) {
+    throw new UnsupportedFormatError(filePath, SUPPORTED_EXTENSIONS);
+  }
+  return adapter;
+}
+
+export class UnsupportedFormatError extends Error {
+  constructor(
+    public filePath: string,
+    public supported: ReadonlyArray<string>,
+  ) {
+    super(
+      `Roughdraft does not recognize the extension of "${filePath}". ` +
+        `Supported: ${supported.join(", ")}. ` +
+        `Use --as md or --as html to override.`,
+    );
+    this.name = "UnsupportedFormatError";
+  }
+}
