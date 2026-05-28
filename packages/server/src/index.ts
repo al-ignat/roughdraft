@@ -159,19 +159,59 @@ function stripSupportedExtension(filename: string): string {
   return filename;
 }
 
+const collisionWarningsLogged = new Set<string>();
+
 function listSupportedFiles(projectDir: string): SupportedFile[] {
+  let entries: string[];
   try {
-    return fs
-      .readdirSync(projectDir)
-      .filter((f) => adapterFor(f) !== null)
-      .map((f) => ({
-        id: stripSupportedExtension(f),
-        relativePath: f,
-        extension: path.extname(f).toLowerCase(),
-      }));
+    entries = fs.readdirSync(projectDir);
   } catch {
     return [];
   }
+
+  const byId = new Map<string, SupportedFile>();
+  const losersById = new Map<string, string[]>();
+
+  // Sort by SUPPORTED_EXTENSIONS order so the canonical adapter wins.
+  const sorted = entries
+    .filter((f) => adapterFor(f) !== null)
+    .sort((a, b) => {
+      const aPriority = SUPPORTED_EXTENSIONS.indexOf(
+        path.extname(a).toLowerCase(),
+      );
+      const bPriority = SUPPORTED_EXTENSIONS.indexOf(
+        path.extname(b).toLowerCase(),
+      );
+      return aPriority - bPriority;
+    });
+
+  for (const filename of sorted) {
+    const id = stripSupportedExtension(filename);
+    const extension = path.extname(filename).toLowerCase();
+    if (byId.has(id)) {
+      const losers = losersById.get(id) ?? [];
+      losers.push(filename);
+      losersById.set(id, losers);
+      continue;
+    }
+    byId.set(id, { id, relativePath: filename, extension });
+  }
+
+  for (const [id, losers] of losersById) {
+    const winner = byId.get(id);
+    if (!winner) continue;
+    const cacheKey = `${projectDir}::${id}`;
+    if (!collisionWarningsLogged.has(cacheKey)) {
+      collisionWarningsLogged.add(cacheKey);
+      process.stderr.write(
+        `[roughdraft] Multiple files share id "${id}" in ${projectDir}: ` +
+          `using "${winner.relativePath}", ignoring ${losers.map((f) => `"${f}"`).join(", ")}. ` +
+          `Rename or delete one to silence this warning.\n`,
+      );
+    }
+  }
+
+  return Array.from(byId.values());
 }
 
 function titleFromContent(content: string, fallback: string): string {

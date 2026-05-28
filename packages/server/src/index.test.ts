@@ -1012,6 +1012,41 @@ describe("createApp", () => {
     ]);
   });
 
+  it("warns and dedupes when foo.md and foo.html collide in /api/pages", async () => {
+    fs.writeFileSync(path.join(projectDir, "shared.md"), "# Shared MD\n");
+    fs.writeFileSync(
+      path.join(projectDir, "shared.html"),
+      "<!doctype html><html><head><title>Shared HTML</title></head><body></body></html>",
+    );
+
+    const warnings: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      warnings.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+      return true;
+    }) as typeof process.stderr.write;
+
+    try {
+      const { app } = createApp({ homeDir, staticDirPath: projectDir });
+      const response = await request(app)
+        .get("/api/pages")
+        .query({ projectPath: projectDir });
+
+      expect(response.status).toBe(200);
+      const ids = response.body.map((page: { id: string }) => page.id);
+      expect(ids.filter((id: string) => id === "shared")).toHaveLength(1);
+      const sharedPage = response.body.find(
+        (page: { id: string }) => page.id === "shared",
+      );
+      expect(sharedPage.title).toBe("Shared MD");
+
+      expect(warnings.join("")).toContain('Multiple files share id "shared"');
+      expect(warnings.join("")).toContain("shared.html");
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  });
+
   it("honors the as=html override on an arbitrary extension", async () => {
     fs.writeFileSync(
       path.join(projectDir, "note.txt"),
