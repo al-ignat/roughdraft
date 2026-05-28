@@ -82,4 +82,54 @@ describe("mcp", () => {
 
     expect(fs.readFileSync(documentPath, "utf8")).toBe(original);
   });
+
+  it("reads a review index from a .html document", async () => {
+    const htmlPath = path.join(projectDir, "page.html");
+    fs.writeFileSync(
+      htmlPath,
+      [
+        "<!doctype html>",
+        '<html><head><title>HTML Doc</title></head>',
+        '<body><p>Body <mark data-rd-id="h1">highlight</mark>.</p></body></html>',
+      ].join("\n"),
+    );
+
+    const result = (await callTool(
+      "roughdraft_get_review_index",
+      { documentPath: htmlPath },
+      { ROUGHDRAFT_STATE_FILE: stateFile },
+    )) as { items: Array<{ id: string }> };
+
+    expect(Array.isArray(result.items)).toBe(true);
+    expect(result.items.some((item) => item.id === "h1")).toBe(true);
+  });
+
+  it("rejects a .txt document with the supported-extensions hint", async () => {
+    const txtPath = path.join(projectDir, "note.txt");
+    fs.writeFileSync(txtPath, "plain");
+
+    await expect(
+      callTool(
+        "roughdraft_get_review_index",
+        { documentPath: txtPath },
+        { ROUGHDRAFT_STATE_FILE: stateFile },
+      ),
+    ).rejects.toThrow(/--as md or --as html/);
+  });
+
+  it("honors as=html on an unrecognized extension", async () => {
+    const txtPath = path.join(projectDir, "note.txt");
+    fs.writeFileSync(
+      txtPath,
+      '<!doctype html><html><body><mark data-rd-id="h1">x</mark></body></html>',
+    );
+
+    const result = (await callTool(
+      "roughdraft_get_review_index",
+      { documentPath: txtPath, as: "html" },
+      { ROUGHDRAFT_STATE_FILE: stateFile },
+    )) as { items: Array<{ id: string }> };
+
+    expect(result.items.some((item) => item.id === "h1")).toBe(true);
+  });
 });
