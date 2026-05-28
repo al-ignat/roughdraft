@@ -1653,9 +1653,7 @@ describe("runCli open in remote mode", () => {
 
     expect(exitCode).toBe(1);
     expect(fetchCalls).toBe(0);
-    expect(errors.join("\n")).toContain(
-      "does not recognize the extension",
-    );
+    expect(errors.join("\n")).toContain("does not recognize the extension");
   });
 
   it("registers a session, opens the viewer URL, and writes save events to disk", {

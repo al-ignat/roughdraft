@@ -1,13 +1,13 @@
 import { generateJSON, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { parseHTML } from "linkedom";
-import type { CriticComment } from "./format-adapter";
+import type { CriticComment } from "./format-adapter.js";
 import {
   appendHtmlReply,
   extractHtmlReviewIndex,
   markHtmlResolved,
   validateHtmlReview,
-} from "./html-review";
+} from "./html-review.js";
 import type {
   EditorState,
   FormatAdapter,
@@ -16,7 +16,7 @@ import type {
   ResolveOptions,
   ReviewIndex,
   ValidationResult,
-} from "./format-adapter";
+} from "./format-adapter.js";
 
 const extensions = [StarterKit];
 

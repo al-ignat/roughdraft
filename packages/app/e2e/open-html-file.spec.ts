@@ -47,7 +47,7 @@ test.describe("opening local HTML files", () => {
     // modes that render the HTML are not wired yet, so we only assert that the
     // page loaded and the editor surface is mounted.
     await openMarkdownFile(page, filePath);
-    await expect(page.locator("body")).toBeVisible();
+    await expect(page.getByTestId("document-page-shell")).toBeVisible();
 
     logE2eEvent("open-html-file.loaded", {
       projectDir,

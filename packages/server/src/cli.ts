@@ -5,9 +5,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
-import {
-  type RfmDiagnostic,
-} from "@roughdraft/rfm";
+import type { RfmDiagnostic } from "@roughdraft/rfm";
 import {
   adapterFor,
   adapterForOrThrow,
@@ -398,9 +396,7 @@ function parseCommandOptions(
       if (!options.allowAs) throw new Error(`Unknown flag: ${arg}`);
       const next = takeFlagValue(args, index, arg);
       if (!isFormatId(next.value)) {
-        throw new Error(
-          `--as expects "md" or "html", got "${next.value}".`,
-        );
+        throw new Error(`--as expects "md" or "html", got "${next.value}".`);
       }
       parsed.as = next.value;
       index = next.nextIndex;
@@ -851,7 +847,9 @@ function printCommandHelp(
       "  --print-url          Print only the document URL and do not open it",
     );
     log("  --no-watch           Open the file without waiting");
-    log("  --as md|html         Force the format adapter (overrides extension)");
+    log(
+      "  --as md|html         Force the format adapter (overrides extension)",
+    );
     log("  --timeout <seconds>  Maximum watch time; omitted means no timeout");
     log("  --replay             Allow watch to return retained older events");
     log("  --json               Print machine-readable output");
@@ -966,7 +964,9 @@ function printCommandHelp(
     log("");
     log("Flags:");
     log("  --json               Print machine-readable output");
-    log("  --as md|html         Force the format adapter (overrides extension)");
+    log(
+      "  --as md|html         Force the format adapter (overrides extension)",
+    );
     log("  --state-file <path>  Server state file");
     log("  --state-dir <dir>    Directory containing server.json");
     return;
@@ -2031,7 +2031,8 @@ async function runMarkdownDoctor(
 
   const validation = adapter.validateReview(content);
   const payload = {
-    kind: adapter.extension === ".md" ? "markdown" as const : "html" as const,
+    kind:
+      adapter.extension === ".md" ? ("markdown" as const) : ("html" as const),
     path: absolutePath,
     format: validation.format,
     version: validation.version,

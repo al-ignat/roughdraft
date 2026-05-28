@@ -12,7 +12,7 @@ import type {
   ResolveOptions,
   ReviewIndex,
   ValidationResult,
-} from "./format-adapter";
+} from "./format-adapter.js";
 
 const NOT_IMPLEMENTED =
   "markdownAdapter parse/serialize live in the app package " +

@@ -214,11 +214,6 @@ function listSupportedFiles(projectDir: string): SupportedFile[] {
   return Array.from(byId.values());
 }
 
-function titleFromContent(content: string, fallback: string): string {
-  const firstLine = content.split("\n")[0] || "";
-  return firstLine.replace(/^#*\s*/, "").trim() || fallback;
-}
-
 function fileVersionFromContent(
   stats: fs.Stats,
   content: string | Buffer,
@@ -658,7 +653,9 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
     const target = documentPathFromRequest(req, res);
     if (!target) return;
 
-    res.json(pageFromFile(target.relativePath, target.absolutePath, target.adapter));
+    res.json(
+      pageFromFile(target.relativePath, target.absolutePath, target.adapter),
+    );
   });
 
   app.get("/api/markdown-file/events", (req, res) => {
@@ -817,7 +814,9 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
     }
 
     fs.writeFileSync(target.absolutePath, content);
-    res.json(pageFromFile(target.relativePath, target.absolutePath, target.adapter));
+    res.json(
+      pageFromFile(target.relativePath, target.absolutePath, target.adapter),
+    );
   });
 
   app.post("/api/pages", (req, res) => {

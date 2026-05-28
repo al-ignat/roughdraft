@@ -1,7 +1,18 @@
-import path from "node:path";
-import type { FormatAdapter } from "./format-adapter";
-import { htmlAdapter } from "./html-adapter";
-import { markdownAdapter } from "./markdown-adapter";
+import type { FormatAdapter } from "./format-adapter.js";
+import { htmlAdapter } from "./html-adapter.js";
+import { markdownAdapter } from "./markdown-adapter.js";
+
+function extname(filename: string): string {
+  const lastSlash = Math.max(
+    filename.lastIndexOf("/"),
+    filename.lastIndexOf("\\"),
+  );
+  const lastDot = filename.lastIndexOf(".");
+  if (lastDot < 0 || lastDot < lastSlash || lastDot === filename.length - 1) {
+    return "";
+  }
+  return filename.slice(lastDot);
+}
 
 export type FormatId = "md" | "html";
 
@@ -22,7 +33,7 @@ export const SUPPORTED_EXTENSIONS = Object.keys(REGISTRY);
 export const FORMAT_IDS: ReadonlyArray<FormatId> = ["md", "html"];
 
 export function adapterFor(filePath: string): FormatAdapter | null {
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = extname(filePath).toLowerCase();
   return REGISTRY[ext] ?? null;
 }
 

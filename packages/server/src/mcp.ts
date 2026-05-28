@@ -370,7 +370,9 @@ function formatOverrideFromArgs(
   const raw = args.as;
   if (raw === undefined) return undefined;
   if (isFormatId(raw)) return raw;
-  throw new Error(`Invalid format override "${String(raw)}". Expected: md, html.`);
+  throw new Error(
+    `Invalid format override "${String(raw)}". Expected: md, html.`,
+  );
 }
 
 function resolveDocument(args: Record<string, unknown>): ResolvedDocument {

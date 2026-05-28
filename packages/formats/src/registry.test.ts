@@ -33,12 +33,7 @@ describe("adapter registry", () => {
   });
 
   it("exposes the supported extension list", () => {
-    expect(SUPPORTED_EXTENSIONS).toEqual([
-      ".md",
-      ".markdown",
-      ".html",
-      ".htm",
-    ]);
+    expect(SUPPORTED_EXTENSIONS).toEqual([".md", ".markdown", ".html", ".htm"]);
   });
 
   it("isFormatId narrows to FormatId", () => {

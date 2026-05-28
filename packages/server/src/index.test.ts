@@ -1022,7 +1022,9 @@ describe("createApp", () => {
     const warnings: string[] = [];
     const originalWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = ((chunk: string | Uint8Array) => {
-      warnings.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+      warnings.push(
+        typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"),
+      );
       return true;
     }) as typeof process.stderr.write;
 

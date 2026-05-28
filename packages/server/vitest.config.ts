@@ -8,10 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@roughdraft/rfm": path.resolve(dirname, "../rfm/src/index.ts"),
-      "@roughdraft/formats": path.resolve(
-        dirname,
-        "../formats/src/index.ts",
-      ),
+      "@roughdraft/formats": path.resolve(dirname, "../formats/src/index.ts"),
     },
   },
   test: {

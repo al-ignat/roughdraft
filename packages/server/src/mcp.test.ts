@@ -89,7 +89,7 @@ describe("mcp", () => {
       htmlPath,
       [
         "<!doctype html>",
-        '<html><head><title>HTML Doc</title></head>',
+        "<html><head><title>HTML Doc</title></head>",
         '<body><p>Body <mark data-rd-id="h1">highlight</mark>.</p></body></html>',
       ].join("\n"),
     );
