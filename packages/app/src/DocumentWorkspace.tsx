@@ -32,7 +32,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "./components/ui/tooltip";
-import { criticMarkdownHasReviewRail } from "./critic-markup";
 import { cn } from "./lib/utils";
 import {
   type DocumentInteractionMode,
@@ -250,18 +249,7 @@ export function DocumentWorkspace({
     [onDocumentSaveStateChange],
   );
 
-  const [documentHasComments, setDocumentHasComments] = useState(
-    () =>
-      !!documentPage?.content &&
-      criticMarkdownHasReviewRail(documentPage.content),
-  );
-
-  useEffect(() => {
-    setDocumentHasComments(
-      !!documentPage?.content &&
-        criticMarkdownHasReviewRail(documentPage.content),
-    );
-  }, [documentPage?.content]);
+  const [documentHasComments, setDocumentHasComments] = useState(false);
 
   useEffect(() => {
     const documentIdentity = `${activeDocumentPath ?? ""}:${documentPage?.id ?? ""}`;

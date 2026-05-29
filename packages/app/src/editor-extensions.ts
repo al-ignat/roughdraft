@@ -817,5 +817,7 @@ export function createHtmlEditorExtensions(placeholder: string) {
       placeholder,
     }),
     ...htmlReviewExtensions,
+    CommentRef,
+    CommentHighlight,
   ];
 }

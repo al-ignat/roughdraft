@@ -82,4 +82,44 @@ export const RdDeletion = Mark.create({
   },
 });
 
+export const CommentAnchor = Mark.create({
+  name: "commentRef",
+  priority: 1100,
+  inclusive: false,
+  spanning: true,
+
+  addAttributes() {
+    return {
+      commentIds: {
+        default: [] as string[],
+        parseHTML: (element: HTMLElement) => {
+          const ids = element.getAttribute("data-comment-ids");
+          if (!ids) return [];
+          try {
+            return JSON.parse(ids);
+          } catch {
+            return [];
+          }
+        },
+        renderHTML: (attributes: { commentIds?: string[] }) =>
+          attributes.commentIds?.length
+            ? { "data-comment-ids": JSON.stringify(attributes.commentIds) }
+            : {},
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "span[data-comment-ids]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, { class: "comment-anchor" }),
+      0,
+    ];
+  },
+});
+
 export const reviewMarkExtensions = [RdHighlight, RdInsertion, RdDeletion];
