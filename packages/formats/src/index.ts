@@ -9,16 +9,21 @@ export type {
   ValidationResult,
 } from "./format-adapter.js";
 
-export { htmlAdapter } from "./html-adapter.js";
+export { htmlAdapter, htmlReviewExtensions } from "./html-adapter.js";
 export { markdownAdapter } from "./markdown-adapter.js";
-
 export {
   adapterFor,
   adapterForFormat,
   adapterForOrThrow,
   FORMAT_IDS,
+  type FormatId,
   isFormatId,
   SUPPORTED_EXTENSIONS,
   UnsupportedFormatError,
-  type FormatId,
 } from "./registry.js";
+export {
+  RdDeletion,
+  RdHighlight,
+  RdInsertion,
+  reviewMarkExtensions,
+} from "./tiptap-html-extensions.js";

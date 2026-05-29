@@ -1,14 +1,8 @@
-import { generateJSON, type JSONContent } from "@tiptap/core";
+import { generateHTML, generateJSON, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { parseHTML } from "linkedom";
-import type { CriticComment } from "./format-adapter.js";
-import {
-  appendHtmlReply,
-  extractHtmlReviewIndex,
-  markHtmlResolved,
-  validateHtmlReview,
-} from "./html-review.js";
 import type {
+  CriticComment,
   EditorState,
   FormatAdapter,
   ParseOptions,
@@ -17,8 +11,17 @@ import type {
   ReviewIndex,
   ValidationResult,
 } from "./format-adapter.js";
+import {
+  appendHtmlReply,
+  extractHtmlReviewIndex,
+  markHtmlResolved,
+  validateHtmlReview,
+} from "./html-review.js";
+import { reviewMarkExtensions } from "./tiptap-html-extensions.js";
 
-const extensions = [StarterKit];
+const extensions = [StarterKit, ...reviewMarkExtensions];
+
+export const htmlReviewExtensions = reviewMarkExtensions;
 
 interface HtmlPreambleData {
   preamble: string;
@@ -71,6 +74,40 @@ function decodePreamble(frontmatter: string | null): HtmlPreambleData | null {
   }
 }
 
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function renderCommentSpans(comments: Map<string, CriticComment>): string {
+  if (comments.size === 0) return "";
+  const fragments: string[] = [];
+  for (const comment of comments.values()) {
+    const attrs: string[] = ["data-rd-comment", "hidden"];
+    attrs.push(`data-rd-id="${escapeAttribute(comment.id)}"`);
+    if (comment.authorId) {
+      attrs.push(`data-rd-by="${escapeAttribute(comment.authorId)}"`);
+    }
+    if (comment.createdAt) {
+      attrs.push(`data-rd-at="${escapeAttribute(comment.createdAt)}"`);
+    }
+    const re = comment.anchorRef ?? comment.parentCommentId ?? null;
+    if (re) {
+      attrs.push(`data-rd-re="${escapeAttribute(re)}"`);
+    }
+    fragments.push(
+      `<span ${attrs.join(" ")}>${escapeHtmlText(comment.content)}</span>`,
+    );
+  }
+  return fragments.join("");
+}
+
 function extractCommentsFromBody(bodyHtml: string): {
   comments: Map<string, CriticComment>;
   bodyWithoutComments: string;
@@ -94,6 +131,7 @@ function extractCommentsFromBody(bodyHtml: string): {
       authorType: by === "AI" ? "ai" : "user",
       authorId: by ?? null,
       parentCommentId: re?.startsWith("c") ? re : null,
+      anchorRef: re ?? null,
     });
     span.remove();
   }
@@ -124,7 +162,12 @@ export const htmlAdapter: FormatAdapter = {
     if (!data) {
       return "";
     }
-    return data.preamble + data.rawBody + data.postamble;
+    if (!state.dirty) {
+      return data.preamble + data.rawBody + data.postamble;
+    }
+    const bodyFromDoc = generateHTML(state.doc, extensions);
+    const commentSpans = renderCommentSpans(state.comments);
+    return data.preamble + bodyFromDoc + commentSpans + data.postamble;
   },
 
   validateReview(content: string): ValidationResult {

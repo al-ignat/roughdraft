@@ -13,12 +13,14 @@ export interface CriticComment {
   authorType?: "user" | "ai";
   authorId?: string | null;
   parentCommentId?: string | null;
+  anchorRef?: string | null;
 }
 
 export interface EditorState {
   doc: JSONContent;
   comments: Map<string, CriticComment>;
   frontmatter: string | null;
+  dirty?: boolean;
 }
 
 export interface ParseOptions {
