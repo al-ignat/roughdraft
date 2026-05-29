@@ -4,7 +4,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { buildLocationForLinkedMarkdownDocument } from "./app-navigation";
 import { CommentEditorList } from "./CommentEditorList";
 import {
   type CriticChangeAttrs,
@@ -14,22 +14,25 @@ import {
   criticMarkdownHasReviewRail,
   getCommentDescendantIds,
 } from "./critic-markup";
-import { markdownAdapter } from "./formats";
 import {
   type CriticChangeRailItem,
   DocumentReviewRail,
 } from "./DocumentReviewRail";
 import { getPreferredCommentId, parseCommentIds } from "./document-comments";
+import {
+  adapterForDocument,
+  editorExtensionsForAdapter,
+  type SourceLanguage,
+  sourceLanguageForAdapter,
+} from "./document-format";
 import { EditorContextMenu } from "./EditorContextMenu";
 import {
   commentHighlightPluginKey,
-  createEditorExtensions,
   criticChangeHighlightPluginKey,
   SUGGESTED_PARAGRAPH_SENTINEL,
 } from "./editor-extensions";
 import { cn } from "./lib/utils";
 import { MarkdownCodeEditor } from "./MarkdownCodeEditor";
-import { buildLocationForLinkedMarkdownDocument } from "./app-navigation";
 import { toHtml } from "./markdown";
 import type { Page, StorageBackend } from "./storage";
 import { useCommentAnchorLayout } from "./useCommentAnchorLayout";
@@ -107,6 +110,7 @@ interface CodeEditorSurfaceProps {
   hasCommentRailSpace: boolean;
   interactionMode: DocumentInteractionMode;
   layout: "default" | "embedded-demo";
+  language: SourceLanguage;
   onMarkdownChange: (markdown: string) => void;
 }
 
@@ -637,13 +641,18 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
     [activeDocumentPath, backend],
   );
 
+  const currentAdapter = useMemo(
+    () => adapterForDocument(activeDocumentPath),
+    [activeDocumentPath],
+  );
+
   const parsedContent = useMemo(
     () =>
-      markdownAdapter.parse(sourceMarkdown, {
+      currentAdapter.parse(sourceMarkdown, {
         resolveFileUrl,
         resolveLinkUrl,
       }),
-    [resolveFileUrl, resolveLinkUrl, sourceMarkdown],
+    [currentAdapter, resolveFileUrl, resolveLinkUrl, sourceMarkdown],
   );
   const [comments, setComments] = useState<Map<string, CriticComment>>(
     () => parsedContent.comments,
@@ -671,14 +680,14 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
       if (!currentDoc) return;
 
       onMarkdownChange(
-        markdownAdapter.serialize({
+        currentAdapter.serialize({
           doc: currentDoc,
           comments: nextComments ?? commentsRef.current,
           frontmatter: frontmatterRef.current,
         }),
       );
     },
-    [onMarkdownChange],
+    [currentAdapter, onMarkdownChange],
   );
 
   const insertFiles = useCallback(
@@ -739,7 +748,10 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
 
   const editor = useEditor(
     {
-      extensions: createEditorExtensions("Start writing..."),
+      extensions: editorExtensionsForAdapter(
+        currentAdapter,
+        "Start writing...",
+      ),
       content: parsedContent.doc,
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
@@ -1220,7 +1232,7 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
         refreshCriticChanges();
       },
     },
-    [page.id],
+    [page.id, currentAdapter],
   );
 
   editorRef.current = editor;
@@ -2007,6 +2019,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   hasCommentRailSpace,
   interactionMode,
   layout,
+  language,
   onMarkdownChange,
 }: CodeEditorSurfaceProps) {
   const documentShellClass = cn(
@@ -2046,6 +2059,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
                 onChange={onMarkdownChange}
                 readOnly={interactionMode === "viewing"}
                 autoFocus
+                language={language}
               />
             </div>
           </div>
@@ -2298,9 +2312,19 @@ const PageCardEditorSurface = memo(function PageCardEditorSurface({
     };
   }, []);
 
+  const surfaceAdapter = useMemo(
+    () => adapterForDocument(activeDocumentPath),
+    [activeDocumentPath],
+  );
+  const surfaceLanguage = useMemo(
+    () => sourceLanguageForAdapter(surfaceAdapter),
+    [surfaceAdapter],
+  );
+
   const hasCommentRailSpace = useMemo(
-    () => criticMarkdownHasReviewRail(markdown),
-    [markdown],
+    () =>
+      surfaceLanguage === "markdown" && criticMarkdownHasReviewRail(markdown),
+    [markdown, surfaceLanguage],
   );
 
   useEffect(() => {
@@ -2315,6 +2339,7 @@ const PageCardEditorSurface = memo(function PageCardEditorSurface({
         hasCommentRailSpace={hasCommentRailSpace}
         interactionMode={interactionMode}
         layout={layout}
+        language={surfaceLanguage}
         onMarkdownChange={handleMarkdownChange}
       />
     );

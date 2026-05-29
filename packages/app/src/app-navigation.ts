@@ -1,3 +1,5 @@
+import { SUPPORTED_EXTENSIONS } from "./formats";
+
 interface RequestedPathState {
   rawPath: string | null;
   projectPath: string | null;
@@ -11,6 +13,11 @@ export const PREVIEW_PATH = "/preview";
 
 function normalizePathSeparators(value: string) {
   return value.replace(/\\/g, "/");
+}
+
+function hasSupportedExtension(normalizedPath: string): boolean {
+  const lower = normalizedPath.toLowerCase();
+  return SUPPORTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
 export function isReservedAppPath(pathname: string) {
@@ -56,7 +63,7 @@ export function getRequestedPathState(): RequestedPathState {
   }
 
   const normalizedPath = normalizePathSeparators(rawPath);
-  if (!normalizedPath.toLowerCase().endsWith(".md")) {
+  if (!hasSupportedExtension(normalizedPath)) {
     return { rawPath, projectPath: rawPath, documentPath: null };
   }
 

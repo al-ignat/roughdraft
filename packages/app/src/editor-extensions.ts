@@ -808,3 +808,12 @@ export function createEditorExtensions(placeholder: string) {
     }),
   ];
 }
+
+export function createHtmlEditorExtensions(placeholder: string) {
+  return [
+    StarterKit,
+    Placeholder.configure({
+      placeholder,
+    }),
+  ];
+}

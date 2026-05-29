@@ -1577,7 +1577,9 @@ export function App() {
           !requestedPathState.documentPath
         ) {
           setActiveDocumentPath(null);
-          setLoadError("Roughdraft now opens one .md file at a time.");
+          setLoadError(
+            "Roughdraft now opens one Markdown or HTML file at a time.",
+          );
           setLoading(false);
           return;
         }

@@ -43,11 +43,17 @@ test.describe("opening local HTML files", () => {
     expect(payload.title).toBe("HTML Smoke");
     expect(payload.content).toContain("<!doctype html>");
 
-    // Loading the document in the SPA should not error out. The Phase 3.2 view
-    // modes that render the HTML are not wired yet, so we only assert that the
-    // page loaded and the editor surface is mounted.
     await openMarkdownFile(page, filePath);
     await expect(page.getByTestId("document-page-shell")).toBeVisible();
+
+    const editor = page.getByTestId("rich-text-editor");
+    await expect(editor).toBeVisible();
+    const heading = editor.locator("h1"); // selector-check-ignore: asserting htmlAdapter rendered the body's heading
+    const paragraph = editor.locator("p"); // selector-check-ignore: asserting htmlAdapter rendered the body's paragraph
+    await expect(heading).toHaveText("HTML Smoke");
+    await expect(paragraph).toHaveText(
+      "Body text from the HTML smoke fixture.",
+    );
 
     logE2eEvent("open-html-file.loaded", {
       projectDir,

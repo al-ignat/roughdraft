@@ -37,6 +37,20 @@ describe("app navigation", () => {
     );
   });
 
+  it("reads absolute HTML paths from the path query parameter", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?path=%2FUsers%2Fme%2Fdocs%2Fpage.html",
+    );
+
+    expect(getRequestedPathState()).toEqual({
+      rawPath: "/Users/me/docs/page.html",
+      projectPath: "/Users/me/docs",
+      documentPath: "page.html",
+    });
+  });
+
   it("does not treat reserved app pages as file paths", () => {
     window.history.replaceState(null, "", ROUGHDRAFT_FLAVORED_MARKDOWN_PATH);
 
