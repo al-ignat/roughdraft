@@ -169,3 +169,58 @@ describe("htmlAdapter — round-trip", () => {
     expect(output).toBe(input);
   });
 });
+
+describe("htmlAdapter — review markup in the doc", () => {
+  it("parses <mark>/<ins>/<del> into rdHighlight, rdInsertion, rdDeletion marks", () => {
+    const state = htmlAdapter.parse(readFixture("with-review.html"));
+    const serialized = JSON.stringify(state.doc);
+    expect(serialized).toContain("rdHighlight");
+    expect(serialized).toContain("rdInsertion");
+    expect(serialized).toContain("rdDeletion");
+  });
+
+  it("preserves data-rd-* attributes on marks (id, by, at, pair)", () => {
+    const state = htmlAdapter.parse(readFixture("with-review.html"));
+    const serialized = JSON.stringify(state.doc);
+    expect(serialized).toContain('"id":"h1"');
+    expect(serialized).toContain('"id":"s1a"');
+    expect(serialized).toContain('"id":"s1b"');
+    expect(serialized).toContain('"pair":"s1"');
+    expect(serialized).toContain('"by":"AI"');
+  });
+});
+
+describe("htmlAdapter — dirty serialize", () => {
+  it("re-renders body from the doc when state.dirty is true, preserving review marks", () => {
+    const state = htmlAdapter.parse(readFixture("with-review.html"));
+    const output = htmlAdapter.serialize({ ...state, dirty: true });
+    expect(output).toContain("<mark");
+    expect(output).toContain('data-rd-id="h1"');
+    expect(output).toContain("<ins");
+    expect(output).toContain('data-rd-id="i1"');
+    expect(output).toContain("<del");
+    expect(output).toContain('data-rd-id="s1a"');
+  });
+
+  it("appends comment spans after the body when serializing dirty", () => {
+    const state = htmlAdapter.parse(readFixture("with-review.html"));
+    const output = htmlAdapter.serialize({ ...state, dirty: true });
+    expect(output).toContain('data-rd-id="c1"');
+    expect(output).toContain('data-rd-id="c2"');
+    expect(output).toContain('data-rd-re="h1"');
+    expect(output).toContain('data-rd-re="c1"');
+    expect(output).toContain("Can we add a number");
+  });
+
+  it("preserves anchorRef for comments pointing at highlights through round-trip", () => {
+    const state = htmlAdapter.parse(readFixture("with-review.html"));
+    expect(state.comments.get("c1")?.anchorRef).toBe("h1");
+    expect(state.comments.get("c2")?.anchorRef).toBe("c1");
+  });
+
+  it("non-dirty serialize remains byte-perfect even though new marks parse non-trivially", () => {
+    const input = readFixture("with-review.html");
+    const output = htmlAdapter.serialize(htmlAdapter.parse(input));
+    expect(output).toBe(input);
+  });
+});

@@ -1,4 +1,5 @@
-import { Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
+import { htmlReviewExtensions } from "@roughdraft/formats";
+import { Extension, Mark, mergeAttributes, Node } from "@tiptap/core";
 import Code from "@tiptap/extension-code";
 import CodeBlock from "@tiptap/extension-code-block";
 import Image from "@tiptap/extension-image";
@@ -815,5 +816,6 @@ export function createHtmlEditorExtensions(placeholder: string) {
     Placeholder.configure({
       placeholder,
     }),
+    ...htmlReviewExtensions,
   ];
 }
