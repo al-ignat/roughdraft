@@ -115,6 +115,9 @@ Paragraph with **bold**, [link](https://example.com), `inline code`.
 | Comment editor | Reply editing | Use a reply action | `comment-rail-child-editor` | Useful for nested thread spacing. |
 | Code mode | Review rail present | Open review fixture with `?editor=code` | `page-card-code`, `markdown-code-editor` | Confirms code editor and rail can coexist. |
 | Code mode | Review rail absent | Open fenced fixture with `?editor=code` | `page-card-code`, `markdown-code-editor` | Confirms fenced CriticMarkup alone does not create review rail. |
+| HTML document | Comments shown (default) | Open an `.html` review fixture in rich mode | `document-page-shell`, `document-comment-rail-toggle`, `document-review-rail` | Shell carries `data-rd-format="html"`; `rd-doc-content` wraps the body; injected `<style data-rd-scope>` applies `@scope (.rd-doc-content)`. |
+| HTML document | Comments hidden | Click `document-comment-rail-toggle` while viewing an HTML review fixture | `document-page-shell`, `document-comment-rail-toggle` | Shell gains `document-page-shell-no-comments`; column widens to ~1080px; inline marks fade via `rd-marks-hidden` on the rich-text wrapper. |
+| Toolbar | Comments toggle (focus/hover) | Hover or focus the new toggle button in either format | `document-comment-rail-toggle` | Captures `aria-pressed` state and the `MessageSquare` / `MessageSquareOff` icon swap. |
 | Error/home fallback | Non-Markdown path | Open URL with `?path=/tmp/file.txt` | homepage error message | Copy: `Roughdraft now opens one .md file at a time.` |
 | Error/home fallback | Missing/unloadable path | Open URL with invalid markdown path through local backend | homepage error message | Captures load-error homepage variant. |
 ## Playwright Capture Skeleton

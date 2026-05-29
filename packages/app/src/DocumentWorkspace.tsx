@@ -5,6 +5,8 @@ import {
   CodeXml,
   Eye,
   Loader2,
+  MessageSquare,
+  MessageSquareOff,
   MessageSquarePlus,
   PencilLine,
   RefreshCcw,
@@ -40,6 +42,7 @@ import {
   PageCard,
 } from "./PageCard";
 import type { Page, StorageBackend } from "./storage";
+import { useCommentRailPreference } from "./use-comment-rail-preference";
 
 type DiskChangeState = "clean" | "changed" | "conflict" | "paused";
 type ReviewHandoffState =
@@ -355,6 +358,11 @@ export function DocumentWorkspace({
     documentEditorViewMode === "rich-text"
       ? "Switch to code view"
       : "Switch to rich text view";
+  const { visible: commentRailVisible, toggle: toggleCommentRail } =
+    useCommentRailPreference();
+  const commentRailToggleLabel = commentRailVisible
+    ? "Hide comments"
+    : "Show comments";
   const activeDocumentInteractionMode = documentInteractionModeOptions.find(
     (option) => option.value === documentInteractionMode,
   );
@@ -536,7 +544,7 @@ export function DocumentWorkspace({
             data-testid="document-page-header"
             className={cn(
               "document-page-shell mb-2 flex flex-col gap-6 text-[0.62rem] font-medium tracking-[0.01em] text-stone-400 min-[1100px]:grid min-[1100px]:grid-cols-[minmax(0,46.5rem)_minmax(24rem,1fr)] min-[1100px]:items-start min-[1100px]:justify-between min-[1100px]:gap-8",
-              !documentHasComments &&
+              (!documentHasComments || !commentRailVisible) &&
                 "document-page-shell-no-comments min-[1100px]:grid-cols-[minmax(0,46.5rem)] min-[1100px]:justify-center",
             )}
           >
@@ -580,6 +588,27 @@ export function DocumentWorkspace({
                     }
                   />
                   <TooltipContent>{editorViewModeToggleLabel}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        data-testid="document-comment-rail-toggle"
+                        aria-pressed={commentRailVisible}
+                        onClick={toggleCommentRail}
+                        className="flex h-[1.25rem] w-[1.25rem] shrink-0 items-center justify-center rounded-full text-stone-500 transition hover:text-stone-700 dark:text-slate-400 dark:hover:text-slate-200"
+                      >
+                        {commentRailVisible ? (
+                          <MessageSquare className="size-[0.75rem]" />
+                        ) : (
+                          <MessageSquareOff className="size-[0.75rem]" />
+                        )}
+                      </button>
+                    }
+                    aria-label={commentRailToggleLabel}
+                  />
+                  <TooltipContent>{commentRailToggleLabel}</TooltipContent>
                 </Tooltip>
                 <div
                   className="min-w-0 truncate font-mono text-[0.7rem] tracking-[0.01em] text-stone-400 dark:text-stone-500"
@@ -646,7 +675,7 @@ export function DocumentWorkspace({
                 </div>
               </div>
             </div>
-            {documentHasComments ? (
+            {documentHasComments && commentRailVisible ? (
               <div
                 className="document-comment-rail pointer-events-none invisible hidden min-[1100px]:block"
                 aria-hidden="true"
@@ -674,6 +703,7 @@ export function DocumentWorkspace({
               }}
               saveBlocked={documentDiskChangeState !== "clean"}
               forceResetKey={documentForceResetKey}
+              commentRailVisible={commentRailVisible}
             />
           ) : null
         ) : (
