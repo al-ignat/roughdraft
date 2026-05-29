@@ -1,9 +1,11 @@
-import { basicSetup } from "codemirror";
+import { html } from "@codemirror/lang-html";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
+import type { SourceLanguage } from "./document-format";
 import { cn } from "./lib/utils";
 
 interface MarkdownCodeEditorProps {
@@ -13,16 +15,24 @@ interface MarkdownCodeEditorProps {
   readOnly?: boolean;
   className?: string;
   testId?: string;
+  language?: SourceLanguage;
+}
+
+function languageExtension(language: SourceLanguage): Extension {
+  return language === "html"
+    ? html()
+    : yamlFrontmatter({ content: markdown() });
 }
 
 export function createMarkdownCodeEditorExtensions(
   readOnly: boolean,
   onDocumentChange: (value: string) => void,
   lastValueRef: { current: string },
+  language: SourceLanguage = "markdown",
 ): Extension[] {
   return [
     basicSetup,
-    yamlFrontmatter({ content: markdown() }),
+    languageExtension(language),
     EditorView.lineWrapping,
     EditorState.readOnly.of(readOnly),
     EditorView.editable.of(!readOnly),
@@ -91,6 +101,7 @@ export function MarkdownCodeEditor({
   readOnly = false,
   className,
   testId,
+  language = "markdown",
 }: MarkdownCodeEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -114,6 +125,7 @@ export function MarkdownCodeEditor({
           readOnly,
           (nextValue) => onChangeRef.current(nextValue),
           lastValueRef,
+          language,
         ),
       }),
     });
@@ -129,7 +141,7 @@ export function MarkdownCodeEditor({
       editorViewRef.current = null;
       view.destroy();
     };
-  }, [autoFocus, readOnly]);
+  }, [autoFocus, readOnly, language]);
 
   useEffect(() => {
     const view = editorViewRef.current;
