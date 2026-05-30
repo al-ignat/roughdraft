@@ -11,7 +11,6 @@ import {
   type CriticComment,
   createCriticChange,
   createCriticComment,
-  criticMarkdownHasReviewRail,
   getCommentDescendantIds,
 } from "./critic-markup";
 import {
@@ -2321,11 +2320,19 @@ const PageCardEditorSurface = memo(function PageCardEditorSurface({
     [surfaceAdapter],
   );
 
-  const hasCommentRailSpace = useMemo(
-    () =>
-      surfaceLanguage === "markdown" && criticMarkdownHasReviewRail(markdown),
-    [markdown, surfaceLanguage],
-  );
+  const hasCommentRailSpace = useMemo(() => {
+    if (!markdown) return false;
+    try {
+      const index = surfaceAdapter.extractReviewIndex(markdown);
+      return (
+        index.summary.comments > 0 ||
+        index.summary.replies > 0 ||
+        index.summary.suggestions > 0
+      );
+    } catch {
+      return false;
+    }
+  }, [markdown, surfaceAdapter]);
 
   useEffect(() => {
     if (editorViewMode !== "code") return;

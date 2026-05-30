@@ -17,9 +17,12 @@ import {
   markHtmlResolved,
   validateHtmlReview,
 } from "./html-review.js";
-import { reviewMarkExtensions } from "./tiptap-html-extensions.js";
+import {
+  CommentAnchor,
+  reviewMarkExtensions,
+} from "./tiptap-html-extensions.js";
 
-const extensions = [StarterKit, ...reviewMarkExtensions];
+const extensions = [StarterKit, ...reviewMarkExtensions, CommentAnchor];
 
 export const htmlReviewExtensions = reviewMarkExtensions;
 
@@ -108,6 +111,55 @@ function renderCommentSpans(comments: Map<string, CriticComment>): string {
   return fragments.join("");
 }
 
+function bridgeCommentAnchors(
+  bodyHtml: string,
+  comments: Map<string, CriticComment>,
+): string {
+  const anchorToCommentIds = new Map<string, string[]>();
+  for (const [commentId, comment] of comments) {
+    const anchorRef = comment.anchorRef;
+    if (!anchorRef) continue;
+    if (anchorRef.startsWith("c")) continue;
+    const arr = anchorToCommentIds.get(anchorRef) ?? [];
+    arr.push(commentId);
+    anchorToCommentIds.set(anchorRef, arr);
+  }
+  if (anchorToCommentIds.size === 0) return bodyHtml;
+
+  const { document } = parseHTML(
+    `<!doctype html><html><body>${bodyHtml}</body></html>`,
+  );
+  const body = document.body;
+  for (const [rdId, commentIds] of anchorToCommentIds) {
+    const escapedId = rdId.replace(/"/g, '\\"');
+    const target = body.querySelector(`[data-rd-id="${escapedId}"]`);
+    if (!target?.parentNode) continue;
+    const wrapper = document.createElement("span");
+    wrapper.setAttribute("data-comment-ids", JSON.stringify(commentIds));
+    target.parentNode.insertBefore(wrapper, target);
+    wrapper.appendChild(target);
+  }
+  return body.innerHTML;
+}
+
+function stripCommentAnchorWrappers(bodyHtml: string): string {
+  if (!bodyHtml.includes("data-comment-ids")) return bodyHtml;
+  const { document } = parseHTML(
+    `<!doctype html><html><body>${bodyHtml}</body></html>`,
+  );
+  const body = document.body;
+  const wrappers = body.querySelectorAll("span[data-comment-ids]");
+  for (const wrapper of Array.from(wrappers)) {
+    const parent = wrapper.parentNode;
+    if (!parent) continue;
+    while (wrapper.firstChild) {
+      parent.insertBefore(wrapper.firstChild, wrapper);
+    }
+    parent.removeChild(wrapper);
+  }
+  return body.innerHTML;
+}
+
 function extractCommentsFromBody(bodyHtml: string): {
   comments: Map<string, CriticComment>;
   bodyWithoutComments: string;
@@ -144,9 +196,10 @@ export const htmlAdapter: FormatAdapter = {
   parse(rawContent: string, _options?: ParseOptions): EditorState {
     const { preamble, body, postamble } = splitHtmlDocument(rawContent);
     const { comments, bodyWithoutComments } = extractCommentsFromBody(body);
+    const bodyForEditor = bridgeCommentAnchors(bodyWithoutComments, comments);
     let doc: JSONContent;
     try {
-      doc = generateJSON(bodyWithoutComments, extensions);
+      doc = generateJSON(bodyForEditor, extensions);
     } catch {
       doc = { type: "doc", content: [] };
     }
@@ -165,7 +218,9 @@ export const htmlAdapter: FormatAdapter = {
     if (!state.dirty) {
       return data.preamble + data.rawBody + data.postamble;
     }
-    const bodyFromDoc = generateHTML(state.doc, extensions);
+    const bodyFromDoc = stripCommentAnchorWrappers(
+      generateHTML(state.doc, extensions),
+    );
     const commentSpans = renderCommentSpans(state.comments);
     return data.preamble + bodyFromDoc + commentSpans + data.postamble;
   },

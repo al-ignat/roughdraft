@@ -55,6 +55,21 @@ describe("htmlAdapter — comments", () => {
     const output = htmlAdapter.serialize(htmlAdapter.parse(input));
     expect(output).toBe(input);
   });
+
+  it("attaches commentRef marks to rd-marked text anchored by a comment", () => {
+    const state = htmlAdapter.parse(readFixture("with-review.html"));
+    const serialized = JSON.stringify(state.doc);
+    expect(serialized).toContain('"type":"commentRef"');
+    expect(serialized).toContain('"commentIds":["c1"]');
+  });
+
+  it("does not write comment-anchor wrappers back to disk after a dirty round-trip", () => {
+    const input = readFixture("with-review.html");
+    const state = htmlAdapter.parse(input);
+    const dirtyOutput = htmlAdapter.serialize({ ...state, dirty: true });
+    expect(dirtyOutput).not.toContain("data-comment-ids");
+    expect(dirtyOutput).not.toContain('class="comment-anchor"');
+  });
 });
 
 describe("htmlAdapter — validateReview", () => {
