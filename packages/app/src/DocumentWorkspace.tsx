@@ -3,6 +3,7 @@ import {
   Check,
   CheckCheck,
   CodeXml,
+  ExternalLink,
   Eye,
   Loader2,
   MessageSquare,
@@ -253,6 +254,24 @@ export function DocumentWorkspace({
   );
 
   const [documentHasComments, setDocumentHasComments] = useState(false);
+
+  const isHtmlDocument =
+    !!activeDocumentPath && /\.html?$/i.test(activeDocumentPath);
+  const rawPreviewHref = (() => {
+    if (!isHtmlDocument || !activeDocumentPath) return null;
+    const projectPath = backend?.info.projectPath;
+    if (!projectPath) return null;
+    const separator =
+      activeDocumentPath.startsWith("/") ||
+      projectPath.endsWith("/") ||
+      projectPath.endsWith("\\")
+        ? ""
+        : "/";
+    const absolute = `${projectPath}${separator}${activeDocumentPath}`;
+    const url = new URL("/preview", window.location.origin);
+    url.searchParams.set("path", absolute);
+    return `${url.pathname}${url.search}`;
+  })();
 
   useEffect(() => {
     const documentIdentity = `${activeDocumentPath ?? ""}:${documentPage?.id ?? ""}`;
@@ -610,6 +629,28 @@ export function DocumentWorkspace({
                   />
                   <TooltipContent>{commentRailToggleLabel}</TooltipContent>
                 </Tooltip>
+                {isHtmlDocument && rawPreviewHref ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <a
+                          href={rawPreviewHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid="document-raw-preview-link"
+                          aria-label="Open as raw preview in new tab"
+                          className="flex h-[1.25rem] w-[1.25rem] shrink-0 items-center justify-center rounded-full text-stone-500 transition hover:text-stone-700 dark:text-slate-400 dark:hover:text-slate-200"
+                        >
+                          <ExternalLink className="size-[0.75rem]" />
+                        </a>
+                      }
+                      aria-label="Open as raw preview in new tab"
+                    />
+                    <TooltipContent>
+                      Open as raw preview in new tab
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
                 <div
                   className="min-w-0 truncate font-mono text-[0.7rem] tracking-[0.01em] text-stone-400 dark:text-stone-500"
                   title={documentFilenameLabel}

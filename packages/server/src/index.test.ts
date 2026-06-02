@@ -251,6 +251,44 @@ describe("createApp", () => {
     expect(response.body).toEqual({ error: "Document not found" });
   });
 
+  it("serves a raw HTML document via /api/preview-document without any transformation", async () => {
+    const rawHtml = [
+      "<!doctype html>",
+      "<html><head><style>:root { --x: red; } .slide { display: grid; }</style></head>",
+      '<body><section class="slide"><h1>Deck</h1></section></body></html>',
+      "",
+    ].join("\n");
+    fs.writeFileSync(path.join(projectDir, "deck.html"), rawHtml);
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app).get("/api/preview-document").query({
+      projectPath: projectDir,
+      path: "deck.html",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.header["content-type"]).toMatch(/^text\/html/);
+    expect(response.text).toBe(rawHtml);
+  });
+
+  it("rejects preview-document reads outside the project directory", async () => {
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app).get("/api/preview-document").query({
+      projectPath: projectDir,
+      path: "../secrets.html",
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Document not found" });
+  });
+
   it("accepts review completed events for a markdown file inside the project", async () => {
     fs.writeFileSync(
       path.join(projectDir, "draft.md"),

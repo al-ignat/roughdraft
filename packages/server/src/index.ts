@@ -658,6 +658,16 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
     );
   });
 
+  app.get("/api/preview-document", (req, res) => {
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
+
+    const raw = fs.readFileSync(target.absolutePath, "utf-8");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.send(raw);
+  });
+
   app.get("/api/markdown-file/events", (req, res) => {
     const target = documentPathFromRequest(req, res);
     if (!target) return;

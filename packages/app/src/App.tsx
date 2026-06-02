@@ -4,8 +4,8 @@ import {
   Check,
   CodeXml,
   Copy,
-  Eye,
   ExternalLink,
+  Eye,
   FileText,
   MessageSquare,
   PencilLine,
@@ -44,15 +44,17 @@ import {
   DialogTrigger,
 } from "./components/ui/dialog";
 import { DocumentWorkspace } from "./DocumentWorkspace";
+import { detectBackend } from "./detect-backend";
 import {
   getCommentAnchorMeasurements,
   groupCommentAnchorMeasurements,
   normalizeCommentMeasurement,
   resolveAnchoredRailLayouts,
 } from "./document-comments";
-import { detectBackend } from "./detect-backend";
+import { cn } from "./lib/utils";
 import type { DocumentSaveState } from "./PageCard";
 import { PreviewBackend } from "./preview-backend";
+import { RawHtmlPreviewPage } from "./RawHtmlPreviewPage";
 import { RoughdraftFormatDemo } from "./RoughdraftFormatDemo";
 import {
   MarkdownFileConflictError,
@@ -61,7 +63,6 @@ import {
 } from "./storage";
 import { UpdateNotice } from "./UpdateNotice";
 import { fetchUpdateStatus, type UpdateStatus } from "./update-status";
-import { cn } from "./lib/utils";
 
 export type DocumentDiskChangeState =
   | "clean"
@@ -1876,6 +1877,14 @@ export function App() {
   }
 
   if (isPreviewRoute) {
+    if (requestedPathState.projectPath && requestedPathState.documentPath) {
+      return (
+        <RawHtmlPreviewPage
+          projectPath={requestedPathState.projectPath}
+          documentPath={requestedPathState.documentPath}
+        />
+      );
+    }
     return <PreviewPage />;
   }
 
