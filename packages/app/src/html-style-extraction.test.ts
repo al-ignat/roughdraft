@@ -55,4 +55,34 @@ describe("wrapWithScope", () => {
       "@scope (.custom) { .x { color: red; } }",
     );
   });
+
+  it("rewrites bare :root to :scope so authored variables land on the scope root", () => {
+    expect(wrapWithScope(":root { --brand: red; }")).toBe(
+      "@scope (.rd-doc-content) { :scope { --brand: red; } }",
+    );
+  });
+
+  it("rewrites :root when combined with other selector parts", () => {
+    expect(
+      wrapWithScope(":root.dark, :root[data-mode='x'] { --brand: blue; }"),
+    ).toBe(
+      "@scope (.rd-doc-content) { :scope.dark, :scope[data-mode='x'] { --brand: blue; } }",
+    );
+  });
+
+  it("rewrites :root inside nested at-rules like @media", () => {
+    expect(
+      wrapWithScope(
+        "@media (prefers-color-scheme: dark) { :root { --brand: blue; } }",
+      ),
+    ).toBe(
+      "@scope (.rd-doc-content) { @media (prefers-color-scheme: dark) { :scope { --brand: blue; } } }",
+    );
+  });
+
+  it("does not rewrite identifiers that merely start with :root", () => {
+    expect(wrapWithScope(":root-x { color: red; }")).toBe(
+      "@scope (.rd-doc-content) { :root-x { color: red; } }",
+    );
+  });
 });

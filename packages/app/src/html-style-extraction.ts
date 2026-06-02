@@ -13,5 +13,6 @@ export function wrapWithScope(
   cssText: string,
   selector = ".rd-doc-content",
 ): string {
-  return `@scope (${selector}) { ${cssText} }`;
+  const rewritten = cssText.replace(/:root(?![-\w])/g, ":scope");
+  return `@scope (${selector}) { ${rewritten} }`;
 }
