@@ -30,6 +30,7 @@ import {
   criticChangeHighlightPluginKey,
   SUGGESTED_PARAGRAPH_SENTINEL,
 } from "./editor-extensions";
+import { HtmlScopedStyle } from "./HtmlScopedStyle";
 import { cn } from "./lib/utils";
 import { MarkdownCodeEditor } from "./MarkdownCodeEditor";
 import { toHtml } from "./markdown";
@@ -68,6 +69,7 @@ interface PageCardProps {
   onSaveControllerChange?: (controller: DocumentSaveController | null) => void;
   saveBlocked?: boolean;
   forceResetKey?: string | null;
+  commentRailVisible?: boolean;
 }
 
 interface PageCardEditorSurfaceProps {
@@ -88,6 +90,7 @@ interface PageCardEditorSurfaceProps {
   onSaveControllerChange?: (controller: DocumentSaveController | null) => void;
   saveBlocked?: boolean;
   forceResetKey?: string | null;
+  commentRailVisible: boolean;
 }
 
 interface RichTextEditorSurfaceProps {
@@ -102,6 +105,7 @@ interface RichTextEditorSurfaceProps {
   backend: StorageBackend;
   onEditorReady?: (editor: Editor | null) => void;
   onCommentRailPresenceChange?: (hasCommentRailSpace: boolean) => void;
+  commentRailVisible: boolean;
 }
 
 interface CodeEditorSurfaceProps {
@@ -111,6 +115,7 @@ interface CodeEditorSurfaceProps {
   layout: "default" | "embedded-demo";
   language: SourceLanguage;
   onMarkdownChange: (markdown: string) => void;
+  commentRailVisible: boolean;
 }
 
 export interface DraftSuggestionState {
@@ -602,6 +607,7 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
   backend,
   onEditorReady,
   onCommentRailPresenceChange,
+  commentRailVisible,
 }: RichTextEditorSurfaceProps) {
   const editorRef = useRef<Editor | null>(null);
   const criticChangeFrameRef = useRef<number | null>(null);
@@ -1865,6 +1871,9 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
   }, []);
 
   const hasReviewRail = comments.size > 0 || criticChanges.length > 0;
+  const railRendered = hasReviewRail && commentRailVisible;
+  const surfaceFormat: "html" | "markdown" =
+    sourceLanguageForAdapter(currentAdapter) === "html" ? "html" : "markdown";
   const activeComments = activeCommentIds
     .map((commentId) => comments.get(commentId))
     .filter((comment): comment is CriticComment => Boolean(comment));
@@ -1875,9 +1884,9 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
     layout === "embedded-demo"
       ? "grid grid-cols-1 gap-3 p-4 min-[900px]:grid-cols-[minmax(0,min(100%,42rem))_minmax(13rem,16rem)] min-[900px]:items-start min-[900px]:justify-start"
       : "flex flex-col gap-6 min-[1100px]:grid min-[1100px]:grid-cols-[minmax(0,46.5rem)_minmax(24rem,1fr)] min-[1100px]:items-start min-[1100px]:justify-between min-[1100px]:gap-8",
-    !hasReviewRail && "document-page-shell-no-comments",
+    !railRendered && "document-page-shell-no-comments",
     layout !== "embedded-demo" &&
-      !hasReviewRail &&
+      !railRendered &&
       "min-[1100px]:grid-cols-[minmax(0,46.5rem)] min-[1100px]:justify-center",
   );
   const documentMainClass = cn(
@@ -1901,7 +1910,14 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
       className="cursor-text bg-transparent"
       data-testid="page-card-rich-text"
     >
-      <div data-testid="document-page-shell" className={documentShellClass}>
+      {surfaceFormat === "html" ? (
+        <HtmlScopedStyle frontmatter={parsedContent.frontmatter} />
+      ) : null}
+      <div
+        data-testid="document-page-shell"
+        data-rd-format={surfaceFormat}
+        className={documentShellClass}
+      >
         <div className={documentMainClass}>
           {activeComments.length > 0 ? (
             <CommentEditorList
@@ -1956,58 +1972,66 @@ const RichTextEditorSurface = memo(function RichTextEditorSurface({
                     : handleSuggestInsertion
                 }
               >
-                <div data-testid="rich-text-editor">
+                <div
+                  data-testid="rich-text-editor"
+                  className={cn(
+                    surfaceFormat === "html" && "rd-doc-content",
+                    !commentRailVisible && "rd-marks-hidden",
+                  )}
+                >
                   <EditorContent editor={editor} />
                 </div>
               </EditorContextMenu>
             </div>
           </div>
         </div>
-        <DocumentReviewRail
-          className={reviewRailClass}
-          layout={layout === "embedded-demo" ? "flow" : "anchored"}
-          testId="document-review-rail"
-          commentGroups={commentGroups}
-          comments={comments}
-          suggestions={criticChanges}
-          selectedCommentId={selectedCommentId}
-          hoveredCommentId={hoveredCommentId}
-          selectedChangeId={selectedChangeId}
-          hoveredChangeId={hoveredChangeId}
-          contentHeight={contentHeight}
-          onDeleteComment={deleteComment}
-          onUpdateComment={(commentId, nextContent) => {
-            updateComment(commentId, (current) => ({
-              ...current,
-              content: nextContent,
-            }));
-          }}
-          onReplyComment={replyToComment}
-          onSelectComment={selectComment}
-          onFocusComment={focusComment}
-          onHoverComment={setHoveredCommentId}
-          onAcceptSuggestion={acceptSuggestion}
-          onRejectSuggestion={rejectSuggestion}
-          onReplySuggestion={replyToSuggestion}
-          onSelectSuggestion={selectSuggestion}
-          onFocusSuggestion={focusSuggestion}
-          onHoverSuggestion={setHoveredChangeId}
-          pendingFocusCommentId={pendingFocusCommentId}
-          onAutoFocusComment={(commentId) => {
-            setPendingFocusCommentId((current) =>
-              current === commentId ? null : current,
-            );
-          }}
-          draftSuggestion={draftSuggestion}
-          onDraftSuggestionTextChange={(text) => {
-            setDraftSuggestion((current) =>
-              current ? { ...current, text } : current,
-            );
-          }}
-          onApplyDraftSuggestion={applyDraftSuggestion}
-          onCancelDraftSuggestion={() => setDraftSuggestion(null)}
-          editor={editor}
-        />
+        {railRendered ? (
+          <DocumentReviewRail
+            className={reviewRailClass}
+            layout={layout === "embedded-demo" ? "flow" : "anchored"}
+            testId="document-review-rail"
+            commentGroups={commentGroups}
+            comments={comments}
+            suggestions={criticChanges}
+            selectedCommentId={selectedCommentId}
+            hoveredCommentId={hoveredCommentId}
+            selectedChangeId={selectedChangeId}
+            hoveredChangeId={hoveredChangeId}
+            contentHeight={contentHeight}
+            onDeleteComment={deleteComment}
+            onUpdateComment={(commentId, nextContent) => {
+              updateComment(commentId, (current) => ({
+                ...current,
+                content: nextContent,
+              }));
+            }}
+            onReplyComment={replyToComment}
+            onSelectComment={selectComment}
+            onFocusComment={focusComment}
+            onHoverComment={setHoveredCommentId}
+            onAcceptSuggestion={acceptSuggestion}
+            onRejectSuggestion={rejectSuggestion}
+            onReplySuggestion={replyToSuggestion}
+            onSelectSuggestion={selectSuggestion}
+            onFocusSuggestion={focusSuggestion}
+            onHoverSuggestion={setHoveredChangeId}
+            pendingFocusCommentId={pendingFocusCommentId}
+            onAutoFocusComment={(commentId) => {
+              setPendingFocusCommentId((current) =>
+                current === commentId ? null : current,
+              );
+            }}
+            draftSuggestion={draftSuggestion}
+            onDraftSuggestionTextChange={(text) => {
+              setDraftSuggestion((current) =>
+                current ? { ...current, text } : current,
+              );
+            }}
+            onApplyDraftSuggestion={applyDraftSuggestion}
+            onCancelDraftSuggestion={() => setDraftSuggestion(null)}
+            editor={editor}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -2020,15 +2044,19 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   layout,
   language,
   onMarkdownChange,
+  commentRailVisible,
 }: CodeEditorSurfaceProps) {
+  const railRendered = hasCommentRailSpace && commentRailVisible;
+  const surfaceFormat: "html" | "markdown" =
+    language === "html" ? "html" : "markdown";
   const documentShellClass = cn(
     "document-page-shell",
     layout === "embedded-demo"
       ? "grid grid-cols-1 gap-3 p-4 min-[900px]:grid-cols-[minmax(0,min(100%,42rem))_minmax(13rem,16rem)] min-[900px]:items-start min-[900px]:justify-start"
       : "flex flex-col gap-6 min-[1100px]:grid min-[1100px]:grid-cols-[minmax(0,46.5rem)_minmax(24rem,1fr)] min-[1100px]:items-start min-[1100px]:justify-between min-[1100px]:gap-8",
-    !hasCommentRailSpace && "document-page-shell-no-comments",
+    !railRendered && "document-page-shell-no-comments",
     layout !== "embedded-demo" &&
-      !hasCommentRailSpace &&
+      !railRendered &&
       "min-[1100px]:grid-cols-[minmax(0,46.5rem)] min-[1100px]:justify-center",
   );
   const documentMainClass = cn(
@@ -2045,7 +2073,11 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
 
   return (
     <div className="cursor-text bg-transparent" data-testid="page-card-code">
-      <div data-testid="document-page-shell" className={documentShellClass}>
+      <div
+        data-testid="document-page-shell"
+        data-rd-format={surfaceFormat}
+        className={documentShellClass}
+      >
         <div className={documentMainClass}>
           <div className={contentInsetClass}>
             <div
@@ -2063,7 +2095,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
             </div>
           </div>
         </div>
-        {hasCommentRailSpace ? (
+        {railRendered ? (
           <div
             data-testid="document-review-rail"
             className={reviewRailClass}
@@ -2093,6 +2125,7 @@ const PageCardEditorSurface = memo(function PageCardEditorSurface({
   onSaveControllerChange,
   saveBlocked = false,
   forceResetKey = null,
+  commentRailVisible,
 }: PageCardEditorSurfaceProps) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightSaveRef = useRef<Promise<ManualSaveResult> | null>(null);
@@ -2348,6 +2381,7 @@ const PageCardEditorSurface = memo(function PageCardEditorSurface({
         layout={layout}
         language={surfaceLanguage}
         onMarkdownChange={handleMarkdownChange}
+        commentRailVisible={commentRailVisible}
       />
     );
   }
@@ -2373,6 +2407,7 @@ const PageCardEditorSurface = memo(function PageCardEditorSurface({
       onCommentRailPresenceChange={onCommentRailPresenceChange}
       backend={backend}
       onEditorReady={onEditorReady}
+      commentRailVisible={commentRailVisible}
     />
   );
 });
@@ -2395,6 +2430,7 @@ export function PageCard({
   onSaveControllerChange,
   saveBlocked,
   forceResetKey,
+  commentRailVisible = true,
 }: PageCardProps) {
   const [saveState, setSaveState] = useState<DocumentSaveState>("saved");
 
@@ -2422,6 +2458,7 @@ export function PageCard({
         onSaveControllerChange={onSaveControllerChange}
         saveBlocked={saveBlocked}
         forceResetKey={forceResetKey}
+        commentRailVisible={commentRailVisible}
       />
     </div>
   );
