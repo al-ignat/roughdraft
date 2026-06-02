@@ -64,7 +64,10 @@ del[data-rd-id] {
 
 @media (min-width: 1100px) {
   .document-page-shell-no-comments[data-rd-format="html"] {
-    grid-template-columns: minmax(0, 67.5rem);
+    grid-template-columns: minmax(0, 87.5rem);
+  }
+  .document-page-shell-no-comments[data-rd-format="html"] .document-page-main {
+    max-width: 87.5rem;
   }
 }
 
