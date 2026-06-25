@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { appendAnchoredComment } from "./append-anchored-comment";
+import {
+  appendAnchoredComment,
+  appendReply,
+  setCommentResolved,
+} from "./append-anchored-comment";
 import { applyCommentAnchors } from "./iframe-anchors";
 import { useIframeSelection } from "./iframe-selection";
 import { PreviewCommentRail } from "./PreviewCommentRail";
@@ -209,6 +213,47 @@ export function RawHtmlPreviewPage({
     [clear, documentPath, projectPath, selection],
   );
 
+  const handleReply = useCallback(
+    async (rootId: string, message: string): Promise<boolean> => {
+      setSubmitError(null);
+      const result = await appendReply({
+        projectPath,
+        documentPath,
+        parentId: rootId,
+        message,
+      });
+      if (!result.ok) {
+        setSubmitError(result.error ?? "Could not save the reply.");
+        return false;
+      }
+      // Success: the SSE reload re-renders the rail with the new reply.
+      return true;
+    },
+    [documentPath, projectPath],
+  );
+
+  const handleToggleResolved = useCallback(
+    async (rootId: string, resolved: boolean): Promise<void> => {
+      setSubmitError(null);
+      const result = await setCommentResolved({
+        projectPath,
+        documentPath,
+        targetId: rootId,
+        resolved,
+      });
+      if (!result.ok) {
+        setSubmitError(
+          result.error ??
+            (resolved
+              ? "Could not resolve the comment."
+              : "Could not reopen the comment."),
+        );
+      }
+      // Success: the SSE reload re-renders the rail with the new status.
+    },
+    [documentPath, projectPath],
+  );
+
   if (error) {
     return (
       <div style={messageStyle} data-testid="preview-error">
@@ -236,6 +281,8 @@ export function RawHtmlPreviewPage({
         comments={comments}
         focusedThreadId={focusedThreadId}
         onSelectThread={handleSelectThread}
+        onReply={handleReply}
+        onToggleResolved={handleToggleResolved}
       />
       {selection && (
         <SelectionPill

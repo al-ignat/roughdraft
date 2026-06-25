@@ -16,6 +16,8 @@ export {
   appendHtmlReply,
   type AppendHtmlReplyOptions,
   type HtmlAnchorMetadata,
+  setHtmlResolvedStatus,
+  type SetHtmlResolvedOptions,
 } from "./html-review.js";
 export { markdownAdapter } from "./markdown-adapter.js";
 export {

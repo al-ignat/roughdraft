@@ -173,4 +173,101 @@ test.describe("preview-tab annotations", () => {
       commentIds: ["far"],
     });
   });
+
+  test("posts a reply from the rail and shows it nested under the thread @smoke", async ({
+    page,
+  }) => {
+    const filePath = writeProjectFile(
+      projectDir,
+      "reply.html",
+      [
+        "<!doctype html>",
+        '<html lang="en">',
+        '<head><meta charset="utf-8"><title>Reply</title></head>',
+        "<body>",
+        '<p data-rd-test="target">The brown fox jumped over the lazy dog.</p>',
+        "<span",
+        "  data-rd-comment hidden",
+        '  data-rd-id="c1"',
+        '  data-rd-by="ada"',
+        '  data-rd-at="2026-06-08T10:00:00.000Z"',
+        '  data-rd-anchor-xpath="/html/body[1]/p[1]"',
+        '  data-rd-anchor-start="4"',
+        '  data-rd-anchor-end="13"',
+        '  data-rd-anchor-quote="brown fox"',
+        ">Root comment.</span>",
+        "</body>",
+        "</html>",
+        "",
+      ].join("\n"),
+    );
+
+    await page.goto(`/preview?path=${encodeURIComponent(filePath)}`);
+
+    const card = page.getByTestId("preview-comment-card");
+    await expect(card).toBeVisible();
+
+    // Open the reply composer (parent-frame UI), type, and send.
+    await page.getByTestId("preview-reply-open").click();
+    await page.getByTestId("preview-reply-textarea").fill("Looks good to me.");
+    await page.getByTestId("preview-reply-send").click();
+
+    // The write triggers the SSE reload, which re-extracts comments; the
+    // reply appears nested under its thread.
+    const replies = page.getByTestId("preview-comment-replies");
+    await expect(replies).toContainText("Looks good to me.", {
+      timeout: 6000,
+    });
+
+    logE2eEvent("preview.annotations-reply", { projectDir, parentId: "c1" });
+  });
+
+  test("resolves and reopens a thread from the rail @smoke", async ({
+    page,
+  }) => {
+    const filePath = writeProjectFile(
+      projectDir,
+      "resolve.html",
+      [
+        "<!doctype html>",
+        '<html lang="en">',
+        '<head><meta charset="utf-8"><title>Resolve</title></head>',
+        "<body>",
+        '<p data-rd-test="target">The brown fox jumped over the lazy dog.</p>',
+        "<span",
+        "  data-rd-comment hidden",
+        '  data-rd-id="c1"',
+        '  data-rd-by="ada"',
+        '  data-rd-at="2026-06-08T10:00:00.000Z"',
+        '  data-rd-anchor-xpath="/html/body[1]/p[1]"',
+        '  data-rd-anchor-start="4"',
+        '  data-rd-anchor-end="13"',
+        '  data-rd-anchor-quote="brown fox"',
+        ">Root comment.</span>",
+        "</body>",
+        "</html>",
+        "",
+      ].join("\n"),
+    );
+
+    await page.goto(`/preview?path=${encodeURIComponent(filePath)}`);
+
+    const card = page.getByTestId("preview-comment-card");
+    await expect(card).toBeVisible();
+
+    const toggle = page.getByTestId("preview-resolve-toggle");
+    // Starts unresolved, so the action offers to resolve.
+    await expect(toggle).toHaveText("Resolve");
+
+    // Resolve: the write triggers an SSE reload that re-extracts the
+    // comment with data-rd-status="resolved", flipping the button label.
+    await toggle.click();
+    await expect(toggle).toHaveText("Reopen", { timeout: 6000 });
+
+    // Reopen returns it to the unresolved state.
+    await toggle.click();
+    await expect(toggle).toHaveText("Resolve", { timeout: 6000 });
+
+    logE2eEvent("preview.annotations-resolve", { projectDir, targetId: "c1" });
+  });
 });

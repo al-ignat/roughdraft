@@ -1,26 +1,28 @@
-import express, { type Express, type Request, type Response } from "express";
+import { execSync } from "node:child_process";
 import crypto from "node:crypto";
-import os from "node:os";
-import { createServer as createHttpServer } from "node:http";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import fs from "node:fs";
+import { createServer as createHttpServer } from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   adapterFor,
   adapterForOrThrow,
   appendHtmlAnchoredComment,
   appendHtmlReply,
-  type HtmlAnchorMetadata,
-  isFormatId,
-  SUPPORTED_EXTENSIONS,
-  UnsupportedFormatError,
   type FormatAdapter,
   type FormatId,
+  type HtmlAnchorMetadata,
+  isFormatId,
+  setHtmlResolvedStatus,
+  SUPPORTED_EXTENSIONS,
+  UnsupportedFormatError,
 } from "@roughdraft/formats";
+import express, { type Express, type Request, type Response } from "express";
 import {
+  hasNonLoopbackHost,
   ROUGHDRAFT_DEFAULT_PORT,
   ROUGHDRAFT_PUBLIC_HOST,
-  hasNonLoopbackHost,
   resolveBindHosts,
 } from "./network.js";
 import { ReviewEventQueue } from "./review-events.js";
@@ -29,6 +31,43 @@ import { resolveUpdateStatus } from "./update-status.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const staticDir = path.resolve(__dirname, "../../app/dist");
 const defaultServerRoot = path.resolve(__dirname, "../../..");
+
+/**
+ * Resolve a human-facing author for comments written from the web UI.
+ * Roughdraft has no account system; comments come from whoever is running
+ * the local server. Prefer the document's repo `git config user.name`
+ * (nicely formatted, e.g. "Ada Lovelace"), fall back to the OS username,
+ * then a generic "you". Resolved per project dir and memoized so we don't
+ * spawn git on every comment.
+ */
+const localAuthorCache = new Map<string, string>();
+function resolveLocalAuthor(projectDir: string): string {
+  const cached = localAuthorCache.get(projectDir);
+  if (cached) return cached;
+
+  let author: string | undefined;
+  try {
+    const name = execSync("git config user.name", {
+      cwd: projectDir,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf-8",
+    }).trim();
+    if (name) author = name;
+  } catch {
+    // Not a git repo, git unavailable, or user.name unset — fall through.
+  }
+  if (!author) {
+    try {
+      const username = os.userInfo().username?.trim();
+      if (username) author = username;
+    } catch {
+      // os.userInfo can throw on exotic setups — fall through.
+    }
+  }
+  const resolved = author ?? "you";
+  localAuthorCache.set(projectDir, resolved);
+  return resolved;
+}
 
 interface AssetPayload {
   filename?: string;
@@ -755,13 +794,18 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
     }
 
     const anchorInput = body.anchor as Partial<HtmlAnchorMetadata> | undefined;
-    if (
-      !anchorInput ||
-      typeof anchorInput.xpath !== "string" ||
-      typeof anchorInput.start !== "number" ||
-      typeof anchorInput.end !== "number" ||
-      typeof anchorInput.quote !== "string"
-    ) {
+    const anchorProvided = !!anchorInput;
+    const hasValidAnchor =
+      anchorProvided &&
+      typeof anchorInput.xpath === "string" &&
+      typeof anchorInput.start === "number" &&
+      typeof anchorInput.end === "number" &&
+      typeof anchorInput.quote === "string";
+
+    // A provided anchor must always be well-formed. Root comments anchor to
+    // a selection and require one; replies attach to a parent comment
+    // (data-rd-re) and may omit the anchor entirely.
+    if ((anchorProvided && !hasValidAnchor) || (!parentId && !hasValidAnchor)) {
       res.status(400).json({
         error:
           "anchor must include xpath (string), start (number), end (number), and quote (string)",
@@ -769,38 +813,91 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
       return;
     }
 
-    const anchor: HtmlAnchorMetadata = {
-      xpath: anchorInput.xpath,
-      start: anchorInput.start,
-      end: anchorInput.end,
-      quote: anchorInput.quote,
-    };
+    const anchor: HtmlAnchorMetadata | undefined = hasValidAnchor
+      ? {
+          xpath: anchorInput.xpath as string,
+          start: anchorInput.start as number,
+          end: anchorInput.end as number,
+          quote: anchorInput.quote as string,
+        }
+      : undefined;
 
-    const author = typeof body.author === "string" ? body.author : undefined;
+    const author =
+      typeof body.author === "string" && body.author.trim()
+        ? body.author
+        : resolveLocalAuthor(target.projectDir);
     const at = typeof body.at === "string" ? body.at : undefined;
     const id = typeof body.id === "string" ? body.id : undefined;
 
     const content = fs.readFileSync(target.absolutePath, "utf-8");
-    const updated = parentId
-      ? appendHtmlReply(content, {
-          parentId,
-          message,
-          author,
-          at,
-          id,
-          anchor,
-        })
-      : appendHtmlAnchoredComment(content, {
-          message,
-          author,
-          at,
-          id,
-          anchor,
-        });
+    let updated: string;
+    if (parentId) {
+      updated = appendHtmlReply(content, {
+        parentId,
+        message,
+        author,
+        at,
+        id,
+        anchor,
+      });
+    } else if (anchor) {
+      updated = appendHtmlAnchoredComment(content, {
+        message,
+        author,
+        at,
+        id,
+        anchor,
+      });
+    } else {
+      res.status(400).json({ error: "anchor is required for root comments" });
+      return;
+    }
     fs.writeFileSync(target.absolutePath, updated);
 
     const index = target.adapter.extractReviewIndex(updated);
     res.status(201).json({
+      documentPath: target.absolutePath,
+      projectPath: target.projectDir,
+      relativePath: target.relativePath,
+      fileVersion: fileVersionFromFile(target.absolutePath),
+      ...index,
+    });
+  });
+
+  app.post("/api/set-comment-status", (req, res) => {
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
+
+    if (target.adapter.extension !== ".html") {
+      res.status(400).json({
+        error: "Comment status is only supported for HTML documents",
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as {
+      targetId?: unknown;
+      resolved?: unknown;
+    };
+    const targetId = typeof body.targetId === "string" ? body.targetId : null;
+    if (!targetId) {
+      res.status(400).json({ error: "targetId is required" });
+      return;
+    }
+    if (typeof body.resolved !== "boolean") {
+      res.status(400).json({ error: "resolved (boolean) is required" });
+      return;
+    }
+
+    const content = fs.readFileSync(target.absolutePath, "utf-8");
+    const updated = setHtmlResolvedStatus(content, {
+      targetId,
+      resolved: body.resolved,
+    });
+    fs.writeFileSync(target.absolutePath, updated);
+
+    const index = target.adapter.extractReviewIndex(updated);
+    res.status(200).json({
       documentPath: target.absolutePath,
       projectPath: target.projectDir,
       relativePath: target.relativePath,
