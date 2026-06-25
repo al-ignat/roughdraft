@@ -187,9 +187,70 @@ function nextCommentId(existing: ReadonlyArray<string>): string {
   return `c${max + 1}`;
 }
 
+export interface HtmlAnchorMetadata {
+  xpath: string;
+  start: number;
+  end: number;
+  quote: string;
+}
+
+export type AppendHtmlReplyOptions = AppendRoughdraftReplyOptions & {
+  anchor?: HtmlAnchorMetadata;
+};
+
+export interface AppendHtmlAnchoredCommentOptions {
+  message: string;
+  anchor: HtmlAnchorMetadata;
+  author?: string;
+  at?: string;
+  id?: string;
+}
+
+/**
+ * Append a brand-new root comment anchored to a free-text selection
+ * (XPath + offset + quote). Unlike `appendHtmlReply`, this does not
+ * write `data-rd-re` — the comment is its own thread root, and the
+ * anchor lives entirely in the `data-rd-anchor-*` attributes.
+ *
+ * Use this for the preview-tab "Add comment" flow where the user
+ * selects arbitrary text that has no pre-existing `<mark data-rd-id>`
+ * anchor element.
+ */
+export function appendHtmlAnchoredComment(
+  html: string,
+  options: AppendHtmlAnchoredCommentOptions,
+): string {
+  const { document } = parse(html);
+  const existingIds = Array.from(
+    document.querySelectorAll("[data-rd-id]"),
+  ).flatMap((el) => {
+    const id = el.getAttribute("data-rd-id");
+    return id ? [id] : [];
+  });
+
+  const id = options.id ?? nextCommentId(existingIds);
+  const at = options.at ?? new Date().toISOString();
+
+  const span = document.createElement("span");
+  span.setAttribute("data-rd-comment", "");
+  span.setAttribute("hidden", "");
+  span.setAttribute("data-rd-id", id);
+  if (options.author) span.setAttribute("data-rd-by", options.author);
+  span.setAttribute("data-rd-at", at);
+  span.setAttribute("data-rd-anchor-xpath", options.anchor.xpath);
+  span.setAttribute("data-rd-anchor-start", String(options.anchor.start));
+  span.setAttribute("data-rd-anchor-end", String(options.anchor.end));
+  span.setAttribute("data-rd-anchor-quote", options.anchor.quote);
+  span.textContent = options.message;
+
+  document.body.appendChild(span);
+
+  return `<!doctype html>${document.documentElement.outerHTML}`;
+}
+
 export function appendHtmlReply(
   html: string,
-  options: AppendRoughdraftReplyOptions,
+  options: AppendHtmlReplyOptions,
 ): string {
   const { document } = parse(html);
   const existingIds = Array.from(
@@ -209,6 +270,12 @@ export function appendHtmlReply(
   span.setAttribute("data-rd-re", options.parentId);
   if (options.author) span.setAttribute("data-rd-by", options.author);
   span.setAttribute("data-rd-at", at);
+  if (options.anchor) {
+    span.setAttribute("data-rd-anchor-xpath", options.anchor.xpath);
+    span.setAttribute("data-rd-anchor-start", String(options.anchor.start));
+    span.setAttribute("data-rd-anchor-end", String(options.anchor.end));
+    span.setAttribute("data-rd-anchor-quote", options.anchor.quote);
+  }
   span.textContent = options.message;
 
   document.body.appendChild(span);

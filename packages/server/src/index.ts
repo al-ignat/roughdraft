@@ -8,6 +8,9 @@ import fs from "node:fs";
 import {
   adapterFor,
   adapterForOrThrow,
+  appendHtmlAnchoredComment,
+  appendHtmlReply,
+  type HtmlAnchorMetadata,
   isFormatId,
   SUPPORTED_EXTENSIONS,
   UnsupportedFormatError,
@@ -721,6 +724,88 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
       relativePath: target.relativePath,
       fileVersion: fileVersionFromFile(target.absolutePath),
       ...target.adapter.extractReviewIndex(content),
+    });
+  });
+
+  app.post("/api/append-comment-with-anchor", (req, res) => {
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
+
+    if (target.adapter.extension !== ".html") {
+      res.status(400).json({
+        error: "Anchored comments are only supported for HTML documents",
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as {
+      parentId?: unknown;
+      message?: unknown;
+      author?: unknown;
+      at?: unknown;
+      id?: unknown;
+      anchor?: unknown;
+    };
+
+    const parentId = typeof body.parentId === "string" ? body.parentId : null;
+    const message = typeof body.message === "string" ? body.message : null;
+    if (!message) {
+      res.status(400).json({ error: "message is required" });
+      return;
+    }
+
+    const anchorInput = body.anchor as Partial<HtmlAnchorMetadata> | undefined;
+    if (
+      !anchorInput ||
+      typeof anchorInput.xpath !== "string" ||
+      typeof anchorInput.start !== "number" ||
+      typeof anchorInput.end !== "number" ||
+      typeof anchorInput.quote !== "string"
+    ) {
+      res.status(400).json({
+        error:
+          "anchor must include xpath (string), start (number), end (number), and quote (string)",
+      });
+      return;
+    }
+
+    const anchor: HtmlAnchorMetadata = {
+      xpath: anchorInput.xpath,
+      start: anchorInput.start,
+      end: anchorInput.end,
+      quote: anchorInput.quote,
+    };
+
+    const author = typeof body.author === "string" ? body.author : undefined;
+    const at = typeof body.at === "string" ? body.at : undefined;
+    const id = typeof body.id === "string" ? body.id : undefined;
+
+    const content = fs.readFileSync(target.absolutePath, "utf-8");
+    const updated = parentId
+      ? appendHtmlReply(content, {
+          parentId,
+          message,
+          author,
+          at,
+          id,
+          anchor,
+        })
+      : appendHtmlAnchoredComment(content, {
+          message,
+          author,
+          at,
+          id,
+          anchor,
+        });
+    fs.writeFileSync(target.absolutePath, updated);
+
+    const index = target.adapter.extractReviewIndex(updated);
+    res.status(201).json({
+      documentPath: target.absolutePath,
+      projectPath: target.projectDir,
+      relativePath: target.relativePath,
+      fileVersion: fileVersionFromFile(target.absolutePath),
+      ...index,
     });
   });
 

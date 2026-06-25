@@ -1,5 +1,5 @@
-import type { AddressInfo } from "node:net";
 import fs from "node:fs";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -284,6 +284,178 @@ describe("createApp", () => {
       projectPath: projectDir,
       path: "../secrets.html",
     });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Document not found" });
+  });
+
+  it("appends an HTML comment with anchor metadata via /api/append-comment-with-anchor", async () => {
+    const seed = [
+      "<!doctype html>",
+      "<html><head><title>Deck</title></head>",
+      "<body><section><p>The first paragraph holds the target quote.</p></section>",
+      '<span data-rd-comment hidden data-rd-id="c1" data-rd-by="user" data-rd-at="2026-06-01T00:00:00Z">Original</span>',
+      "</body></html>",
+    ].join("\n");
+    fs.writeFileSync(path.join(projectDir, "deck.html"), seed);
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app)
+      .post("/api/append-comment-with-anchor")
+      .send({
+        projectPath: projectDir,
+        path: "deck.html",
+        parentId: "c1",
+        message: "Tighten this.",
+        author: "AI",
+        at: "2026-06-03T13:00:00Z",
+        anchor: {
+          xpath: "/html/body[1]/section[1]/p[1]",
+          start: 10,
+          end: 19,
+          quote: "paragraph",
+        },
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.documentPath).toBe(path.join(projectDir, "deck.html"));
+    expect(response.body.relativePath).toBe("deck.html");
+    expect(response.body.fileVersion).toEqual(expect.any(String));
+
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    expect(written).toContain(
+      'data-rd-anchor-xpath="/html/body[1]/section[1]/p[1]"',
+    );
+    expect(written).toContain('data-rd-anchor-start="10"');
+    expect(written).toContain('data-rd-anchor-end="19"');
+    expect(written).toContain('data-rd-anchor-quote="paragraph"');
+    expect(written).toContain('data-rd-re="c1"');
+    expect(written).toContain("Tighten this.");
+  });
+
+  it("appends an anchored ROOT comment (no parentId) and omits data-rd-re", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      [
+        "<!doctype html>",
+        "<html><head><title>Deck</title></head>",
+        "<body><section><p>The first paragraph holds the target quote.</p></section></body></html>",
+      ].join("\n"),
+    );
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app)
+      .post("/api/append-comment-with-anchor")
+      .send({
+        projectPath: projectDir,
+        path: "deck.html",
+        message: "Root anchored comment.",
+        author: "user",
+        at: "2026-06-03T13:30:00Z",
+        anchor: {
+          xpath: "/html/body[1]/section[1]/p[1]",
+          start: 10,
+          end: 19,
+          quote: "paragraph",
+        },
+      });
+
+    expect(response.status).toBe(201);
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    expect(written).toContain(
+      'data-rd-anchor-xpath="/html/body[1]/section[1]/p[1]"',
+    );
+    expect(written).toContain('data-rd-anchor-quote="paragraph"');
+    expect(written).toContain("Root anchored comment.");
+    expect(written).not.toContain("data-rd-re");
+  });
+
+  it("rejects append-comment-with-anchor for non-HTML documents", async () => {
+    fs.writeFileSync(path.join(projectDir, "notes.md"), "# notes\n");
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app)
+      .post("/api/append-comment-with-anchor")
+      .send({
+        projectPath: projectDir,
+        path: "notes.md",
+        parentId: "c1",
+        message: "Hi.",
+        anchor: {
+          xpath: "/html/body[1]",
+          start: 0,
+          end: 1,
+          quote: "n",
+        },
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/only supported for HTML/i);
+  });
+
+  it("rejects append-comment-with-anchor when anchor payload is malformed", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      "<!doctype html><html><body><p>hi</p></body></html>",
+    );
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app)
+      .post("/api/append-comment-with-anchor")
+      .send({
+        projectPath: projectDir,
+        path: "deck.html",
+        parentId: "c1",
+        message: "Hi.",
+        anchor: {
+          xpath: "/html/body[1]/p[1]",
+          // start missing, end missing
+          quote: "hi",
+        },
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/anchor must include/i);
+  });
+
+  it("rejects append-comment-with-anchor for paths outside the project directory", async () => {
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app)
+      .post("/api/append-comment-with-anchor")
+      .send({
+        projectPath: projectDir,
+        path: "../escape.html",
+        parentId: "c1",
+        message: "Hi.",
+        anchor: {
+          xpath: "/html/body[1]",
+          start: 0,
+          end: 1,
+          quote: "x",
+        },
+      });
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: "Document not found" });

@@ -10,6 +10,13 @@ export type {
 } from "./format-adapter.js";
 
 export { htmlAdapter, htmlReviewExtensions } from "./html-adapter.js";
+export {
+  appendHtmlAnchoredComment,
+  type AppendHtmlAnchoredCommentOptions,
+  appendHtmlReply,
+  type AppendHtmlReplyOptions,
+  type HtmlAnchorMetadata,
+} from "./html-review.js";
 export { markdownAdapter } from "./markdown-adapter.js";
 export {
   adapterFor,

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import { htmlAdapter } from "./html-adapter";
+import { appendHtmlAnchoredComment, appendHtmlReply } from "./html-review";
 
 const fixturesDir = join(__dirname, "fixtures");
 const readFixture = (name: string) =>
@@ -131,6 +132,76 @@ describe("htmlAdapter — appendReply", () => {
     const added = outDoc.querySelector('[data-rd-id="c3"]'); // selector-check-ignore
     expect(added?.getAttribute("data-rd-re")).toBe("c1");
     expect(added?.textContent).toBe("Replying now.");
+  });
+});
+
+describe("appendHtmlReply — anchor metadata", () => {
+  it("writes data-rd-anchor-* attributes when anchor is provided", () => {
+    const input = readFixture("with-review.html");
+    const output = appendHtmlReply(input, {
+      parentId: "c1",
+      message: "Tighten this number.",
+      author: "AI",
+      at: "2026-06-03T12:00:00Z",
+      id: "c9",
+      anchor: {
+        xpath: "/html/body[1]/section[1]/p[2]",
+        start: 42,
+        end: 67,
+        quote: "3–4 commitments",
+      },
+    });
+    const added = parseHTML(output).document.querySelector(
+      '[data-rd-id="c9"]', // selector-check-ignore
+    );
+    expect(added?.getAttribute("data-rd-anchor-xpath")).toBe(
+      "/html/body[1]/section[1]/p[2]",
+    );
+    expect(added?.getAttribute("data-rd-anchor-start")).toBe("42");
+    expect(added?.getAttribute("data-rd-anchor-end")).toBe("67");
+    expect(added?.getAttribute("data-rd-anchor-quote")).toBe("3–4 commitments");
+    expect(added?.textContent).toBe("Tighten this number.");
+  });
+
+  it("appendHtmlAnchoredComment writes a root span with anchor and no data-rd-re", () => {
+    const input = readFixture("with-review.html");
+    const output = appendHtmlAnchoredComment(input, {
+      message: "New root.",
+      author: "user",
+      at: "2026-06-03T13:00:00Z",
+      id: "c10",
+      anchor: {
+        xpath: "/html/body[1]/p[1]",
+        start: 0,
+        end: 5,
+        quote: "Hello",
+      },
+    });
+    const added = parseHTML(output).document.querySelector(
+      '[data-rd-id="c10"]', // selector-check-ignore
+    );
+    expect(added?.hasAttribute("data-rd-re")).toBe(false);
+    expect(added?.getAttribute("data-rd-anchor-xpath")).toBe(
+      "/html/body[1]/p[1]",
+    );
+    expect(added?.getAttribute("data-rd-anchor-quote")).toBe("Hello");
+    expect(added?.textContent).toBe("New root.");
+  });
+
+  it("omits anchor attributes when anchor is not provided", () => {
+    const input = readFixture("with-review.html");
+    const output = appendHtmlReply(input, {
+      parentId: "c1",
+      message: "No anchor needed.",
+      id: "c8",
+    });
+    const added = parseHTML(output).document.querySelector(
+      '[data-rd-id="c8"]', // selector-check-ignore
+    );
+    expect(added?.hasAttribute("data-rd-anchor-xpath")).toBe(false);
+    expect(added?.hasAttribute("data-rd-anchor-start")).toBe(false);
+    expect(added?.hasAttribute("data-rd-anchor-end")).toBe(false);
+    expect(added?.hasAttribute("data-rd-anchor-quote")).toBe(false);
   });
 });
 
