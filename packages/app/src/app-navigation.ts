@@ -203,6 +203,9 @@ export function buildLocationForDocumentEditorViewMode(
 }
 
 export function syncRequestedPathInUrl(path?: string | null) {
+  if (isReservedAppPath(window.location.pathname)) {
+    return;
+  }
   const nextLocation = buildLocationForPath(path);
   const currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (nextLocation !== currentLocation) {
