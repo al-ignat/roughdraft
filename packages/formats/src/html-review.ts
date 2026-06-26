@@ -297,3 +297,32 @@ export function markHtmlResolved(
   }
   return `<!doctype html>${document.documentElement.outerHTML}`;
 }
+
+export interface SetHtmlResolvedOptions {
+  /** `data-rd-id` of the comment span to toggle. */
+  targetId: string;
+  /** When true, mark resolved; when false, reopen (clear the status). */
+  resolved: boolean;
+}
+
+/**
+ * Toggle a comment's resolved state. Unlike `markHtmlResolved` (set-only),
+ * this both sets `data-rd-status="resolved"` and clears it (plus any
+ * resolution summary) so the preview rail can offer resolve *and* reopen.
+ */
+export function setHtmlResolvedStatus(
+  html: string,
+  options: SetHtmlResolvedOptions,
+): string {
+  const { document } = parse(html);
+  const target = document.querySelector(`[data-rd-id="${options.targetId}"]`);
+  if (target) {
+    if (options.resolved) {
+      target.setAttribute("data-rd-status", "resolved");
+    } else {
+      target.removeAttribute("data-rd-status");
+      target.removeAttribute("data-rd-resolution");
+    }
+  }
+  return `<!doctype html>${document.documentElement.outerHTML}`;
+}

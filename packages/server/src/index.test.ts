@@ -382,6 +382,84 @@ describe("createApp", () => {
     expect(written).not.toContain("data-rd-re");
   });
 
+  it("defaults data-rd-by to a resolved local author when none is provided", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      [
+        "<!doctype html>",
+        "<html><head><title>Deck</title></head>",
+        "<body><section><p>The first paragraph holds the target quote.</p></section></body></html>",
+      ].join("\n"),
+    );
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app)
+      .post("/api/append-comment-with-anchor")
+      .send({
+        projectPath: projectDir,
+        path: "deck.html",
+        message: "No author supplied.",
+        anchor: {
+          xpath: "/html/body[1]/section[1]/p[1]",
+          start: 10,
+          end: 19,
+          quote: "paragraph",
+        },
+      });
+
+    expect(response.status).toBe(201);
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    // The server resolves a local author (git user.name -> OS username),
+    // so the persisted span carries a non-empty data-rd-by even though the
+    // request omitted `author`.
+    const match = written.match(/data-rd-by="([^"]+)"/);
+    expect(match).not.toBeNull();
+    expect((match?.[1]?.length ?? 0) > 0).toBe(true);
+  });
+
+  it("appends a REPLY (parentId, no anchor) and writes data-rd-re", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      [
+        "<!doctype html>",
+        "<html><head><title>Deck</title></head>",
+        "<body><section><p>Body paragraph.</p></section>",
+        '<span data-rd-comment hidden data-rd-id="c1" data-rd-by="ada" data-rd-at="2026-06-01T00:00:00Z" data-rd-anchor-xpath="/html/body[1]/section[1]/p[1]" data-rd-anchor-start="0" data-rd-anchor-end="4" data-rd-anchor-quote="Body">Root comment.</span>',
+        "</body></html>",
+      ].join("\n"),
+    );
+    const { app } = createApp({
+      homeDir,
+      staticDirPath: projectDir,
+    });
+
+    const response = await request(app)
+      .post("/api/append-comment-with-anchor")
+      .send({
+        projectPath: projectDir,
+        path: "deck.html",
+        parentId: "c1",
+        message: "A reply with no anchor.",
+        author: "reviewer",
+        // no anchor — replies attach to their parent, not a new range
+      });
+
+    expect(response.status).toBe(201);
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    expect(written).toContain('data-rd-re="c1"');
+    expect(written).toContain("A reply with no anchor.");
+    expect(written).toContain('data-rd-by="reviewer"');
+  });
+
   it("rejects append-comment-with-anchor for non-HTML documents", async () => {
     fs.writeFileSync(path.join(projectDir, "notes.md"), "# notes\n");
     const { app } = createApp({
@@ -459,6 +537,96 @@ describe("createApp", () => {
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: "Document not found" });
+  });
+
+  it("marks a comment resolved via /api/set-comment-status", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      [
+        "<!doctype html>",
+        "<html><head><title>Deck</title></head>",
+        "<body><section><p>Body paragraph.</p></section>",
+        '<span data-rd-comment hidden data-rd-id="c1" data-rd-by="ada" data-rd-at="2026-06-01T00:00:00Z">Root comment.</span>',
+        "</body></html>",
+      ].join("\n"),
+    );
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/set-comment-status").send({
+      projectPath: projectDir,
+      path: "deck.html",
+      targetId: "c1",
+      resolved: true,
+    });
+
+    expect(response.status).toBe(200);
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    expect(written).toContain('data-rd-status="resolved"');
+  });
+
+  it("reopens a resolved comment via /api/set-comment-status", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      [
+        "<!doctype html>",
+        "<html><head><title>Deck</title></head>",
+        "<body><section><p>Body paragraph.</p></section>",
+        '<span data-rd-comment hidden data-rd-id="c1" data-rd-by="ada" data-rd-at="2026-06-01T00:00:00Z" data-rd-status="resolved" data-rd-resolution="done">Root comment.</span>',
+        "</body></html>",
+      ].join("\n"),
+    );
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/set-comment-status").send({
+      projectPath: projectDir,
+      path: "deck.html",
+      targetId: "c1",
+      resolved: false,
+    });
+
+    expect(response.status).toBe(200);
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    expect(written).not.toContain("data-rd-status");
+    expect(written).not.toContain("data-rd-resolution");
+  });
+
+  it("rejects set-comment-status for non-HTML documents", async () => {
+    fs.writeFileSync(path.join(projectDir, "notes.md"), "# notes\n");
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/set-comment-status").send({
+      projectPath: projectDir,
+      path: "notes.md",
+      targetId: "c1",
+      resolved: true,
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/only supported for HTML/i);
+  });
+
+  it("rejects set-comment-status when resolved is not a boolean", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      '<!doctype html><html><body><span data-rd-comment hidden data-rd-id="c1">Hi.</span></body></html>',
+    );
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/set-comment-status").send({
+      projectPath: projectDir,
+      path: "deck.html",
+      targetId: "c1",
+      // resolved omitted
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/resolved/i);
   });
 
   it("accepts review completed events for a markdown file inside the project", async () => {

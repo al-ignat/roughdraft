@@ -8,7 +8,7 @@
  * response.
  */
 
-import { type AnchorMetadata, computeAnchorFromRange } from "./iframe-anchors";
+import { computeAnchorFromRange } from "./iframe-anchors";
 
 export interface AppendAnchoredCommentArgs {
   projectPath: string;
@@ -43,45 +43,91 @@ export async function appendAnchoredComment(
     };
   }
 
-  return submitAnchoredComment({
-    projectPath: args.projectPath,
-    documentPath: args.documentPath,
-    message: args.message,
-    author: args.author,
-    anchor,
-  });
+  return postJson(
+    "/api/append-comment-with-anchor",
+    args.projectPath,
+    args.documentPath,
+    {
+      message: args.message,
+      author: args.author,
+      anchor,
+    },
+  );
 }
 
-interface SubmitArgs {
+export interface AppendReplyArgs {
   projectPath: string;
   documentPath: string;
+  parentId: string;
   message: string;
   author?: string;
-  anchor: AnchorMetadata;
 }
 
-async function submitAnchoredComment(
-  args: SubmitArgs,
+/**
+ * Post a reply to an existing comment thread. Replies attach to their
+ * parent via `parentId` (persisted as `data-rd-re`) and carry no anchor of
+ * their own — they live wherever the root comment is anchored.
+ */
+export async function appendReply(
+  args: AppendReplyArgs,
 ): Promise<AppendAnchoredCommentResult> {
-  const url = new URL(
+  return postJson(
     "/api/append-comment-with-anchor",
-    window.location.origin,
+    args.projectPath,
+    args.documentPath,
+    {
+      parentId: args.parentId,
+      message: args.message,
+      author: args.author,
+    },
   );
-  url.searchParams.set("projectPath", args.projectPath);
-  url.searchParams.set("path", args.documentPath);
+}
+
+export interface SetCommentResolvedArgs {
+  projectPath: string;
+  documentPath: string;
+  targetId: string;
+  resolved: boolean;
+}
+
+/**
+ * Toggle a comment's resolved state via `POST /api/set-comment-status`.
+ * `resolved: true` marks it resolved; `false` reopens it.
+ */
+export async function setCommentResolved(
+  args: SetCommentResolvedArgs,
+): Promise<AppendAnchoredCommentResult> {
+  return postJson(
+    "/api/set-comment-status",
+    args.projectPath,
+    args.documentPath,
+    {
+      targetId: args.targetId,
+      resolved: args.resolved,
+    },
+  );
+}
+
+/**
+ * Shared JSON POST for comment mutations. The `projectPath`/`path` pair is
+ * sent both as query params and in the body (the server reads either).
+ */
+async function postJson(
+  endpoint: string,
+  projectPath: string,
+  documentPath: string,
+  payload: Record<string, unknown>,
+): Promise<AppendAnchoredCommentResult> {
+  const url = new URL(endpoint, window.location.origin);
+  url.searchParams.set("projectPath", projectPath);
+  url.searchParams.set("path", documentPath);
 
   let response: Response;
   try {
     response = await fetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectPath: args.projectPath,
-        path: args.documentPath,
-        message: args.message,
-        author: args.author,
-        anchor: args.anchor,
-      }),
+      body: JSON.stringify({ projectPath, path: documentPath, ...payload }),
     });
   } catch (err) {
     return {
