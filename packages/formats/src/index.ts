@@ -11,13 +11,17 @@ export type {
 
 export { htmlAdapter, htmlReviewExtensions } from "./html-adapter.js";
 export {
-  appendHtmlAnchoredComment,
   type AppendHtmlAnchoredCommentOptions,
-  appendHtmlReply,
   type AppendHtmlReplyOptions,
+  appendHtmlAnchoredComment,
+  appendHtmlReply,
+  type DeleteHtmlCommentOptions,
+  deleteHtmlComment,
+  type EditHtmlCommentOptions,
+  editHtmlComment,
   type HtmlAnchorMetadata,
-  setHtmlResolvedStatus,
   type SetHtmlResolvedOptions,
+  setHtmlResolvedStatus,
 } from "./html-review.js";
 export { markdownAdapter } from "./markdown-adapter.js";
 export {

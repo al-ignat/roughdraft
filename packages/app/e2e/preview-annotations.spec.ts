@@ -270,4 +270,99 @@ test.describe("preview-tab annotations", () => {
 
     logE2eEvent("preview.annotations-resolve", { projectDir, targetId: "c1" });
   });
+
+  test("edits a comment from the rail @smoke", async ({ page }) => {
+    const filePath = writeProjectFile(
+      projectDir,
+      "edit.html",
+      [
+        "<!doctype html>",
+        '<html lang="en">',
+        '<head><meta charset="utf-8"><title>Edit</title></head>',
+        "<body>",
+        '<p data-rd-test="target">The brown fox jumped over the lazy dog.</p>',
+        "<span",
+        "  data-rd-comment hidden",
+        '  data-rd-id="c1"',
+        '  data-rd-by="ada"',
+        '  data-rd-at="2026-06-08T10:00:00.000Z"',
+        '  data-rd-anchor-xpath="/html/body[1]/p[1]"',
+        '  data-rd-anchor-start="4"',
+        '  data-rd-anchor-end="13"',
+        '  data-rd-anchor-quote="brown fox"',
+        ">Original text.</span>",
+        "</body>",
+        "</html>",
+        "",
+      ].join("\n"),
+    );
+
+    await page.goto(`/preview?path=${encodeURIComponent(filePath)}`);
+
+    const card = page.getByTestId("preview-comment-card");
+    await expect(card).toContainText("Original text.");
+
+    await page.getByTestId("preview-edit-open").click();
+    const textarea = page.getByTestId("preview-edit-textarea");
+    await expect(textarea).toHaveValue("Original text.");
+    await textarea.fill("Revised text.");
+    await page.getByTestId("preview-edit-send").click();
+
+    // The write triggers the SSE reload; the card re-renders with the new
+    // text and an "edited" marker (from data-rd-edited-at).
+    await expect(card).toContainText("Revised text.", { timeout: 6000 });
+    await expect(card).not.toContainText("Original text.");
+    await expect(card).toContainText("edited");
+
+    logE2eEvent("preview.annotations-edit", { projectDir, targetId: "c1" });
+  });
+
+  test("deletes a comment from the rail, cascading its reply @smoke", async ({
+    page,
+  }) => {
+    const filePath = writeProjectFile(
+      projectDir,
+      "delete.html",
+      [
+        "<!doctype html>",
+        '<html lang="en">',
+        '<head><meta charset="utf-8"><title>Delete</title></head>',
+        "<body>",
+        '<p data-rd-test="target">The brown fox jumped over the lazy dog.</p>',
+        "<span",
+        "  data-rd-comment hidden",
+        '  data-rd-id="c1"',
+        '  data-rd-by="ada"',
+        '  data-rd-at="2026-06-08T10:00:00.000Z"',
+        '  data-rd-anchor-xpath="/html/body[1]/p[1]"',
+        '  data-rd-anchor-start="4"',
+        '  data-rd-anchor-end="13"',
+        '  data-rd-anchor-quote="brown fox"',
+        ">Root to delete.</span>",
+        '<span data-rd-comment hidden data-rd-id="c2" data-rd-re="c1" data-rd-by="bo" data-rd-at="2026-06-08T11:00:00.000Z">A reply.</span>',
+        "</body>",
+        "</html>",
+        "",
+      ].join("\n"),
+    );
+
+    await page.goto(`/preview?path=${encodeURIComponent(filePath)}`);
+
+    const card = page.getByTestId("preview-comment-card");
+    await expect(card).toContainText("Root to delete.");
+    await expect(card).toContainText("A reply.");
+
+    // Open the inline confirm, then confirm in the shadcn dialog.
+    await page.getByTestId("preview-delete-open").click();
+    await page.getByTestId("preview-delete-confirm").click();
+
+    // SSE reload re-extracts an empty review set: the root and its cascaded
+    // reply are gone, and the rail falls back to its empty state.
+    await expect(page.getByTestId("preview-comment-card")).toHaveCount(0, {
+      timeout: 6000,
+    });
+    await expect(page.getByTestId("preview-comment-rail-empty")).toBeVisible();
+
+    logE2eEvent("preview.annotations-delete", { projectDir, targetId: "c1" });
+  });
 });

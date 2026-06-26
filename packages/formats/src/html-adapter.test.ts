@@ -3,7 +3,13 @@ import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import { htmlAdapter } from "./html-adapter";
-import { appendHtmlAnchoredComment, appendHtmlReply } from "./html-review";
+import {
+  appendHtmlAnchoredComment,
+  appendHtmlReply,
+  deleteHtmlComment,
+  editHtmlComment,
+  validateHtmlReview,
+} from "./html-review";
 
 const fixturesDir = join(__dirname, "fixtures");
 const readFixture = (name: string) =>
@@ -213,6 +219,87 @@ describe("htmlAdapter — markResolved", () => {
       '[data-rd-id="h1"]', // selector-check-ignore: asserts review-markup attribute, not UI
     );
     expect(target?.getAttribute("data-rd-status")).toBe("resolved");
+  });
+});
+
+// A self-contained thread: one root comment (c1) with one reply (c2).
+const THREAD_HTML = [
+  "<!doctype html><html><head><title>T</title></head><body>",
+  "<p>Body paragraph.</p>",
+  '<span data-rd-comment hidden data-rd-id="c1" data-rd-by="ada" data-rd-at="2026-06-01T00:00:00Z">Root comment.</span>',
+  '<span data-rd-comment hidden data-rd-id="c2" data-rd-re="c1" data-rd-by="bo" data-rd-at="2026-06-01T01:00:00Z">A reply.</span>',
+  "</body></html>",
+].join("");
+
+describe("editHtmlComment", () => {
+  it("replaces message text and stamps data-rd-edited-at, keeping data-rd-at", () => {
+    const output = editHtmlComment(THREAD_HTML, {
+      targetId: "c1",
+      message: "Revised root comment.",
+      editedAt: "2026-06-02T00:00:00Z",
+    });
+    const target = parseHTML(output).document.querySelector(
+      '[data-rd-id="c1"]', // selector-check-ignore: asserts review-markup attribute, not UI
+    );
+    expect(target?.textContent).toBe("Revised root comment.");
+    expect(target?.getAttribute("data-rd-edited-at")).toBe(
+      "2026-06-02T00:00:00Z",
+    );
+    // created-at is immutable across edits
+    expect(target?.getAttribute("data-rd-at")).toBe("2026-06-01T00:00:00Z");
+  });
+
+  it("edits a reply in place without touching its parent", () => {
+    const output = editHtmlComment(THREAD_HTML, {
+      targetId: "c2",
+      message: "Edited reply.",
+      editedAt: "2026-06-02T00:00:00Z",
+    });
+    const doc = parseHTML(output).document;
+    expect(
+      doc.querySelector('[data-rd-id="c2"]')?.textContent, // selector-check-ignore: review-markup
+    ).toBe("Edited reply.");
+    expect(
+      doc.querySelector('[data-rd-id="c1"]')?.textContent, // selector-check-ignore: review-markup
+    ).toBe("Root comment.");
+  });
+
+  it("is a no-op when the target id is absent", () => {
+    const output = editHtmlComment(THREAD_HTML, {
+      targetId: "nope",
+      message: "x",
+    });
+    expect(output).toContain("Root comment.");
+    expect(output).not.toContain("data-rd-edited-at");
+  });
+});
+
+describe("deleteHtmlComment", () => {
+  it("deleting a root removes the root and cascades its replies", () => {
+    const output = deleteHtmlComment(THREAD_HTML, { targetId: "c1" });
+    const doc = parseHTML(output).document;
+    expect(doc.querySelector('[data-rd-id="c1"]')).toBeNull(); // selector-check-ignore: review-markup
+    expect(doc.querySelector('[data-rd-id="c2"]')).toBeNull(); // selector-check-ignore: review-markup
+    // no dangling data-rd-re survives the cascade
+    const review = validateHtmlReview(output);
+    expect(
+      review.diagnostics.some((d) => d.code === "dangling-reference"),
+    ).toBe(false);
+  });
+
+  it("deleting a reply removes only that reply, leaving the root", () => {
+    const output = deleteHtmlComment(THREAD_HTML, { targetId: "c2" });
+    const doc = parseHTML(output).document;
+    expect(doc.querySelector('[data-rd-id="c2"]')).toBeNull(); // selector-check-ignore: review-markup
+    expect(
+      doc.querySelector('[data-rd-id="c1"]')?.textContent, // selector-check-ignore: review-markup
+    ).toBe("Root comment.");
+  });
+
+  it("is a no-op when the target id is absent", () => {
+    const output = deleteHtmlComment(THREAD_HTML, { targetId: "nope" });
+    expect(output).toContain("Root comment.");
+    expect(output).toContain("A reply.");
   });
 });
 

@@ -10,12 +10,14 @@ import {
   adapterForOrThrow,
   appendHtmlAnchoredComment,
   appendHtmlReply,
+  deleteHtmlComment,
+  editHtmlComment,
   type FormatAdapter,
   type FormatId,
   type HtmlAnchorMetadata,
   isFormatId,
-  setHtmlResolvedStatus,
   SUPPORTED_EXTENSIONS,
+  setHtmlResolvedStatus,
   UnsupportedFormatError,
 } from "@roughdraft/formats";
 import express, { type Express, type Request, type Response } from "express";
@@ -894,6 +896,78 @@ export function createApp(options: CreateAppOptions = {}): CreateAppResult {
       targetId,
       resolved: body.resolved,
     });
+    fs.writeFileSync(target.absolutePath, updated);
+
+    const index = target.adapter.extractReviewIndex(updated);
+    res.status(200).json({
+      documentPath: target.absolutePath,
+      projectPath: target.projectDir,
+      relativePath: target.relativePath,
+      fileVersion: fileVersionFromFile(target.absolutePath),
+      ...index,
+    });
+  });
+
+  app.post("/api/edit-comment", (req, res) => {
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
+
+    if (target.adapter.extension !== ".html") {
+      res.status(400).json({
+        error: "Editing comments is only supported for HTML documents",
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as {
+      targetId?: unknown;
+      message?: unknown;
+    };
+    const targetId = typeof body.targetId === "string" ? body.targetId : null;
+    if (!targetId) {
+      res.status(400).json({ error: "targetId is required" });
+      return;
+    }
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+    if (!message) {
+      res.status(400).json({ error: "message is required" });
+      return;
+    }
+
+    const content = fs.readFileSync(target.absolutePath, "utf-8");
+    const updated = editHtmlComment(content, { targetId, message });
+    fs.writeFileSync(target.absolutePath, updated);
+
+    const index = target.adapter.extractReviewIndex(updated);
+    res.status(200).json({
+      documentPath: target.absolutePath,
+      projectPath: target.projectDir,
+      relativePath: target.relativePath,
+      fileVersion: fileVersionFromFile(target.absolutePath),
+      ...index,
+    });
+  });
+
+  app.post("/api/delete-comment", (req, res) => {
+    const target = documentPathFromRequest(req, res);
+    if (!target) return;
+
+    if (target.adapter.extension !== ".html") {
+      res.status(400).json({
+        error: "Deleting comments is only supported for HTML documents",
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as { targetId?: unknown };
+    const targetId = typeof body.targetId === "string" ? body.targetId : null;
+    if (!targetId) {
+      res.status(400).json({ error: "targetId is required" });
+      return;
+    }
+
+    const content = fs.readFileSync(target.absolutePath, "utf-8");
+    const updated = deleteHtmlComment(content, { targetId });
     fs.writeFileSync(target.absolutePath, updated);
 
     const index = target.adapter.extractReviewIndex(updated);

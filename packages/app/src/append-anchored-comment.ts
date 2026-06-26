@@ -108,6 +108,45 @@ export async function setCommentResolved(
   );
 }
 
+export interface EditCommentArgs {
+  projectPath: string;
+  documentPath: string;
+  targetId: string;
+  message: string;
+}
+
+/**
+ * Replace a comment's message text via `POST /api/edit-comment`. The server
+ * keeps the original created-at and stamps a `data-rd-edited-at` marker.
+ */
+export async function editComment(
+  args: EditCommentArgs,
+): Promise<AppendAnchoredCommentResult> {
+  return postJson("/api/edit-comment", args.projectPath, args.documentPath, {
+    targetId: args.targetId,
+    message: args.message,
+  });
+}
+
+export interface DeleteCommentArgs {
+  projectPath: string;
+  documentPath: string;
+  targetId: string;
+}
+
+/**
+ * Delete a comment (or reply) via `POST /api/delete-comment`. Deleting a
+ * thread root cascades its replies server-side, so no dangling reference is
+ * left behind.
+ */
+export async function deleteComment(
+  args: DeleteCommentArgs,
+): Promise<AppendAnchoredCommentResult> {
+  return postJson("/api/delete-comment", args.projectPath, args.documentPath, {
+    targetId: args.targetId,
+  });
+}
+
 /**
  * Shared JSON POST for comment mutations. The `projectPath`/`path` pair is
  * sent both as query params and in the body (the server reads either).

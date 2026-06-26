@@ -120,6 +120,10 @@ Paragraph with **bold**, [link](https://example.com), `inline code`.
 | Toolbar | Comments toggle (focus/hover) | Hover or focus the new toggle button in either format | `document-comment-rail-toggle` | Captures `aria-pressed` state and the `MessageSquare` / `MessageSquareOff` icon swap. |
 | Error/home fallback | Non-Markdown path | Open URL with `?path=/tmp/file.txt` | homepage error message | Copy: `Roughdraft now opens one .md file at a time.` |
 | Error/home fallback | Missing/unloadable path | Open URL with invalid markdown path through local backend | homepage error message | Captures load-error homepage variant. |
+| Preview rail | Thread card actions | Open an `.html` file with a comment via `/preview?path=...` | `preview-comment-card`, `preview-reply-open`, `preview-resolve-toggle`, `preview-edit-open`, `preview-delete-open` | Footer buttons are shadcn `Button`s; resolved cards dim and `preview-resolve-toggle` reads `Reopen`. |
+| Preview rail | Reply composer | Click `preview-reply-open` on a card | `preview-reply-textarea`, `preview-reply-send`, `preview-reply-cancel` | Footer hides while composing; Esc cancels, Cmd/Ctrl+Enter sends. |
+| Preview rail | Edit composer | Click `preview-edit-open` (root) or `preview-reply-edit-open` (reply) | `preview-edit-textarea`, `preview-edit-send`, `preview-edit-cancel` | Replaces the message in place; an edited comment's meta reads `· edited`. |
+| Preview rail | Delete confirm | Click `preview-delete-open` (root) or `preview-reply-delete-open` (reply) | `preview-delete-confirm`, `preview-delete-cancel` | shadcn `Dialog` modal; root copy warns replies are removed too. |
 ## Playwright Capture Skeleton
 ```ts
 import { chromium, devices } from "playwright";

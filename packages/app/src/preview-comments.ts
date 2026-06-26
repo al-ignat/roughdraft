@@ -17,6 +17,8 @@ export interface PreviewComment {
   message: string;
   author?: string;
   at?: string;
+  /** `data-rd-edited-at` — present once the comment has been edited. */
+  editedAt?: string;
   quote?: string;
   resolved: boolean;
   /** `data-rd-re` — the parent comment id when this is a reply. */
@@ -38,10 +40,20 @@ export function extractPreviewComments(doc: Document): PreviewComment[] {
     if (!message) continue;
     const author = span.getAttribute("data-rd-by") ?? undefined;
     const at = span.getAttribute("data-rd-at") ?? undefined;
+    const editedAt = span.getAttribute("data-rd-edited-at") ?? undefined;
     const quote = span.getAttribute("data-rd-anchor-quote") ?? undefined;
     const replyTo = span.getAttribute("data-rd-re") ?? undefined;
     const resolved = span.getAttribute("data-rd-status") === "resolved";
-    results.push({ id, message, author, at, quote, resolved, replyTo });
+    results.push({
+      id,
+      message,
+      author,
+      at,
+      editedAt,
+      quote,
+      resolved,
+      replyTo,
+    });
   }
   return results;
 }

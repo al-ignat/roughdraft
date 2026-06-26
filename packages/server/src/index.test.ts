@@ -629,6 +629,118 @@ describe("createApp", () => {
     expect(response.body.error).toMatch(/resolved/i);
   });
 
+  it("edits a comment's text via /api/edit-comment", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      [
+        "<!doctype html>",
+        "<html><head><title>Deck</title></head>",
+        "<body><section><p>Body paragraph.</p></section>",
+        '<span data-rd-comment hidden data-rd-id="c1" data-rd-by="ada" data-rd-at="2026-06-01T00:00:00Z">Original.</span>',
+        "</body></html>",
+      ].join("\n"),
+    );
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/edit-comment").send({
+      projectPath: projectDir,
+      path: "deck.html",
+      targetId: "c1",
+      message: "Revised.",
+    });
+
+    expect(response.status).toBe(200);
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    expect(written).toContain("Revised.");
+    expect(written).not.toContain("Original.");
+    expect(written).toContain("data-rd-edited-at");
+    // created-at preserved
+    expect(written).toContain('data-rd-at="2026-06-01T00:00:00Z"');
+  });
+
+  it("rejects edit-comment with an empty message", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      '<!doctype html><html><body><span data-rd-comment hidden data-rd-id="c1">Hi.</span></body></html>',
+    );
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/edit-comment").send({
+      projectPath: projectDir,
+      path: "deck.html",
+      targetId: "c1",
+      message: "   ",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/message/i);
+  });
+
+  it("rejects edit-comment for non-HTML documents", async () => {
+    fs.writeFileSync(path.join(projectDir, "notes.md"), "# notes\n");
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/edit-comment").send({
+      projectPath: projectDir,
+      path: "notes.md",
+      targetId: "c1",
+      message: "x",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/only supported for HTML/i);
+  });
+
+  it("deletes a comment via /api/delete-comment and cascades replies", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      [
+        "<!doctype html>",
+        "<html><head><title>Deck</title></head>",
+        "<body><section><p>Body paragraph.</p></section>",
+        '<span data-rd-comment hidden data-rd-id="c1" data-rd-by="ada" data-rd-at="2026-06-01T00:00:00Z">Root.</span>',
+        '<span data-rd-comment hidden data-rd-id="c2" data-rd-re="c1" data-rd-by="bo" data-rd-at="2026-06-01T01:00:00Z">Reply.</span>',
+        "</body></html>",
+      ].join("\n"),
+    );
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/delete-comment").send({
+      projectPath: projectDir,
+      path: "deck.html",
+      targetId: "c1",
+    });
+
+    expect(response.status).toBe(200);
+    const written = fs.readFileSync(
+      path.join(projectDir, "deck.html"),
+      "utf-8",
+    );
+    expect(written).not.toContain("Root.");
+    expect(written).not.toContain("Reply.");
+    expect(written).not.toContain('data-rd-id="c1"');
+    expect(written).not.toContain('data-rd-id="c2"');
+  });
+
+  it("rejects delete-comment without a targetId", async () => {
+    fs.writeFileSync(
+      path.join(projectDir, "deck.html"),
+      '<!doctype html><html><body><span data-rd-comment hidden data-rd-id="c1">Hi.</span></body></html>',
+    );
+    const { app } = createApp({ homeDir, staticDirPath: projectDir });
+
+    const response = await request(app).post("/api/delete-comment").send({
+      projectPath: projectDir,
+      path: "deck.html",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/targetId/i);
+  });
+
   it("accepts review completed events for a markdown file inside the project", async () => {
     fs.writeFileSync(
       path.join(projectDir, "draft.md"),
