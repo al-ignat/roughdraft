@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   appendAnchoredComment,
   appendReply,
+  deleteComment,
+  editComment,
   setCommentResolved,
 } from "./append-anchored-comment";
 import { applyCommentAnchors } from "./iframe-anchors";
@@ -254,6 +256,41 @@ export function RawHtmlPreviewPage({
     [documentPath, projectPath],
   );
 
+  const handleEdit = useCallback(
+    async (id: string, message: string): Promise<boolean> => {
+      setSubmitError(null);
+      const result = await editComment({
+        projectPath,
+        documentPath,
+        targetId: id,
+        message,
+      });
+      if (!result.ok) {
+        setSubmitError(result.error ?? "Could not save the edit.");
+        return false;
+      }
+      // Success: the SSE reload re-renders the rail with the edited text.
+      return true;
+    },
+    [documentPath, projectPath],
+  );
+
+  const handleDelete = useCallback(
+    async (id: string): Promise<void> => {
+      setSubmitError(null);
+      const result = await deleteComment({
+        projectPath,
+        documentPath,
+        targetId: id,
+      });
+      if (!result.ok) {
+        setSubmitError(result.error ?? "Could not delete the comment.");
+      }
+      // Success: the SSE reload re-renders the rail without the deleted item.
+    },
+    [documentPath, projectPath],
+  );
+
   if (error) {
     return (
       <div style={messageStyle} data-testid="preview-error">
@@ -283,6 +320,8 @@ export function RawHtmlPreviewPage({
         onSelectThread={handleSelectThread}
         onReply={handleReply}
         onToggleResolved={handleToggleResolved}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
       />
       {selection && (
         <SelectionPill

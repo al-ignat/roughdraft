@@ -4,7 +4,6 @@
 // satisfy the FormatAdapter contract until shared types move to
 // @roughdraft/review-types.
 
-import { parseHTML } from "linkedom";
 import type {
   AppendRoughdraftReplyOptions,
   MarkRoughdraftResolvedOptions,
@@ -13,6 +12,7 @@ import type {
   RfmReviewItem,
   RfmValidationResult,
 } from "@roughdraft/rfm";
+import { parseHTML } from "linkedom";
 
 type AnyElement = Element;
 
@@ -323,6 +323,68 @@ export function setHtmlResolvedStatus(
       target.removeAttribute("data-rd-status");
       target.removeAttribute("data-rd-resolution");
     }
+  }
+  return `<!doctype html>${document.documentElement.outerHTML}`;
+}
+
+export interface EditHtmlCommentOptions {
+  /** `data-rd-id` of the comment (or reply) span to edit. */
+  targetId: string;
+  /** New message text; replaces the span's existing text content. */
+  message: string;
+  /** Edit timestamp; defaults to now. Stamped as `data-rd-edited-at`. */
+  editedAt?: string;
+}
+
+/**
+ * Replace a comment's message text in place. The original `data-rd-at`
+ * (created-at) is left untouched; the edit is recorded with a separate
+ * `data-rd-edited-at` marker so review history stays honest. No-op when the
+ * id is not found (mirrors `setHtmlResolvedStatus`).
+ */
+export function editHtmlComment(
+  html: string,
+  options: EditHtmlCommentOptions,
+): string {
+  const { document } = parse(html);
+  const target = document.querySelector(`[data-rd-id="${options.targetId}"]`);
+  if (target) {
+    target.textContent = options.message;
+    target.setAttribute(
+      "data-rd-edited-at",
+      options.editedAt ?? new Date().toISOString(),
+    );
+  }
+  return `<!doctype html>${document.documentElement.outerHTML}`;
+}
+
+export interface DeleteHtmlCommentOptions {
+  /** `data-rd-id` of the comment (or reply) span to delete. */
+  targetId: string;
+}
+
+/**
+ * Remove a comment span. Deleting a thread root also removes every reply
+ * that points at it (`data-rd-re === targetId`), so no dangling reference is
+ * left behind — replies are one level deep (the preview rail only ever
+ * attaches a reply to a root), so a single cascade pass is sufficient.
+ * Deleting a reply removes only that span. No-op when the id is not found.
+ */
+export function deleteHtmlComment(
+  html: string,
+  options: DeleteHtmlCommentOptions,
+): string {
+  const { document } = parse(html);
+  const target = document.querySelector(`[data-rd-id="${options.targetId}"]`);
+  if (target) {
+    const isRoot = !target.getAttribute("data-rd-re");
+    if (isRoot) {
+      const replies = document.querySelectorAll(
+        `[data-rd-re="${options.targetId}"]`,
+      );
+      for (const reply of Array.from(replies)) reply.remove();
+    }
+    target.remove();
   }
   return `<!doctype html>${document.documentElement.outerHTML}`;
 }
